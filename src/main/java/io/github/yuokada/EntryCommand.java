@@ -1,33 +1,46 @@
 package io.github.yuokada;
 
+import io.github.yuokada.subcommand.Format;
+import io.quarkus.picocli.runtime.annotations.TopCommand;
+import java.io.IOException;
+import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import picocli.CommandLine.Command;
+import picocli.CommandLine;
+import picocli.CommandLine.ExitCode;
 import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
 
-@Command(name = "greeting", mixinStandardHelpOptions = true)
-public class EntryCommand implements Runnable {
+@TopCommand
+@CommandLine.Command(
+    name = "trino-query-formatter",
+    subcommands = {Format.class},
+    mixinStandardHelpOptions = true,
+    version = "0.1",
+    description = "Tool to format SQL queries for Trino.")
+public class EntryCommand implements Callable<Integer> {
 
   private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
 
-  @Option(names = {"-V", "--version"},
+  @Option(
+      names = {"-V", "--version"},
       versionHelp = true,
       description = "print version information and exit")
   boolean versionRequested;
 
-  @Option(names = {"--help", "-h"}, usageHelp = true)
+  @Option(
+      names = {"--help", "-h"},
+      usageHelp = true)
   boolean help;
 
-  @Parameters(
-      paramLabel = "<name>",
-      defaultValue = "picocli",
-      description = "Your name.")
-  String name;
-
-  @Override
-  public void run() {
-    System.out.printf("Hello %s, go go commando!\n", name);
+  public static void main(String[] args) throws IOException {
+    int exitCode = new CommandLine(new EntryCommand()).execute(args);
+    System.exit(exitCode);
   }
 
+  @Override
+  public Integer call() throws Exception {
+    CommandLine.usage(this, System.out);
+    // Quarkus.waitForExit();
+    return ExitCode.OK;
+  }
 }
