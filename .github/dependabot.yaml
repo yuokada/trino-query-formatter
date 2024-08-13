@@ -1,0 +1,22 @@
+---
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "saturday"
+      time: "07:00"
+      timezone: "Asia/Tokyo"
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "saturday"
+      time: "07:00"
+      timezone: "Asia/Tokyo"
+    # open-pull-requests-limit: 5
+    groups:
+      maven-plugin-dependencies:
+        patterns:
+          - "org.apache.maven.plugins*"
