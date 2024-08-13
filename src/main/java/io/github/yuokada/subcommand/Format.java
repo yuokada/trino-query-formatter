@@ -6,7 +6,6 @@ import static io.trino.sql.SqlFormatter.formatSql;
 import com.google.common.collect.ImmutableSet;
 import io.github.yuokada.EntryCommand;
 import io.trino.cli.lexer.StatementSplitter;
-import io.trino.sql.parser.ParsingOptions;
 import io.trino.sql.parser.SqlParser;
 import io.trino.sql.tree.Statement;
 import java.io.BufferedReader;
@@ -76,11 +75,10 @@ public class Format implements Callable<Integer> {
   }
 
   private static String format(String sql) {
-    ParsingOptions parsingOptions = new ParsingOptions();
-    Statement statement = sqlParser.createStatement(sql, parsingOptions);
+    Statement statement = sqlParser.createStatement(sql);
     String formattedSql = formatSql(statement);
     checkState(
-        statement.equals(sqlParser.createStatement(formattedSql, parsingOptions)),
+        statement.equals(sqlParser.createStatement(formattedSql)),
         "Formatted SQL is different than original");
     return formattedSql;
   }
