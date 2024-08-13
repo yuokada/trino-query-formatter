@@ -16,7 +16,7 @@
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.3.1</surefire-plugin.version>
         <!-- App specific properties -->
-        <trino.version>430</trino.version>
+        <trino.version>435</trino.version>
     </properties>
 
     <dependencyManagement>
