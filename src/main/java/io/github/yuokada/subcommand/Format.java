@@ -5,9 +5,9 @@ import static io.trino.sql.SqlFormatter.formatSql;
 
 import com.google.common.collect.ImmutableSet;
 import io.github.yuokada.EntryCommand;
+import io.trino.cli.lexer.StatementSplitter;
 import io.trino.sql.parser.ParsingOptions;
 import io.trino.sql.parser.SqlParser;
-import io.trino.sql.parser.StatementSplitter;
 import io.trino.sql.tree.Statement;
 import java.io.BufferedReader;
 import java.io.IOException;
