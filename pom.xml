@@ -15,6 +15,8 @@
         <quarkus.platform.version>3.13.2</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.2.5</surefire-plugin.version>
+        <!-- App specific properties -->
+        <trino.version>432</trino.version>
     </properties>
 
     <dependencyManagement>
@@ -40,8 +42,18 @@
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-container-image-jib</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.trino</groupId>
+            <artifactId>trino-parser</artifactId>
+            <version>${trino.version}</version>
         </dependency>
     </dependencies>
 
