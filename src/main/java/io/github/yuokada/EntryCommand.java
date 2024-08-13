@@ -1,5 +1,6 @@
 package io.github.yuokada;
 
+import io.github.yuokada.subcommand.Analyze;
 import io.github.yuokada.subcommand.Format;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import java.io.IOException;
@@ -13,7 +14,10 @@ import picocli.CommandLine.Option;
 @TopCommand
 @CommandLine.Command(
     name = "trino-query-formatter",
-    subcommands = {Format.class},
+    subcommands = {
+        Analyze.class,
+        Format.class
+    },
     mixinStandardHelpOptions = true,
     version = "0.1",
     description = "Tool to format SQL queries for Trino.")
