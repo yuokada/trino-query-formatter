@@ -4,10 +4,19 @@ import com.google.common.collect.ImmutableSet;
 import io.trino.cli.lexer.DelimiterLexer;
 import io.trino.grammar.sql.SqlBaseParser;
 import io.trino.sql.parser.SqlParser;
+import io.trino.sql.tree.CreateCatalog;
+import io.trino.sql.tree.CreateTable;
+import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DropCatalog;
+import io.trino.sql.tree.DropTable;
+import io.trino.sql.tree.Insert;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.QualifiedName;
+import io.trino.sql.tree.Query;
+import io.trino.sql.tree.ShowCatalogs;
 import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
+import io.trino.sql.tree.Update;
 import java.util.HashSet;
 import java.util.Set;
 import org.antlr.v4.runtime.CharStream;
@@ -57,8 +66,8 @@ public class QueryAnalyzer {
       } else if (token.getType() == SqlBaseParser.DELIMITER) {
         System.out.println(token.getText());
       } else if (token.getType() == SqlBaseParser.EMPTY
-          || token.getType() == SqlBaseParser.COMMENT
-          || token.getType() == SqlBaseParser.WS) {
+                 || token.getType() == SqlBaseParser.COMMENT
+                 || token.getType() == SqlBaseParser.WS) {
         // Do nothing
         logger.debug("Skip: " + token);
       } else {
@@ -68,4 +77,24 @@ public class QueryAnalyzer {
     }
   }
 
+  public static String detectQueryType(String sql) {
+    Statement statement = sqlParser.createStatement(sql);
+    if (statement instanceof Query
+        || statement instanceof Insert
+        || statement instanceof Delete
+        || statement instanceof Update) {
+      return statement.getClass().getSimpleName();
+    } else if (statement instanceof CreateTable) {
+      return "CREATE";
+    } else if (statement instanceof DropTable) {
+      return "CREATE";
+    } else if (statement instanceof ShowCatalogs
+               || statement instanceof CreateCatalog
+               || statement instanceof DropCatalog
+    ) {
+      return statement.getClass().getSimpleName();
+    } else {
+      return String.format("Unknown: %s", statement.getClass().getSimpleName());
+    }
+  }
 }

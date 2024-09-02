@@ -55,4 +55,32 @@ class QueryAnalyzerTest {
         """;
     assertEquals(Set.of("cat1"), QueryAnalyzer.collectCatalogs(sql));
   }
+
+  @Test
+  void testDetectQueryTypeForBasic() {
+    String query = """
+        SELECT * FROM catalog1.schema.tbl1
+        UNION ALL
+        SELECT * FROM catalog2.schema.tbl1
+        """;
+    assertEquals("Query", QueryAnalyzer.detectQueryType(query));
+
+    query = "INSERT INTO foo SELECT * FROM catalog1.schema.tbl1";
+    assertEquals("Insert", QueryAnalyzer.detectQueryType(query));
+
+    query = "DELETE FROM catalog1.schema.tbl1 WHERE 1 = 1";
+    assertEquals("Delete", QueryAnalyzer.detectQueryType(query));
+
+    query = "Update catalog1.schema.tbl1 SET status = 'DONE' WHERE id = 1";
+    assertEquals("Update", QueryAnalyzer.detectQueryType(query));
+  }
+
+  @Test
+  void testDetectQueryTypeForCatalogQueries() {
+    String query = "SHOW CATALOGS";
+    assertEquals("ShowCatalogs", QueryAnalyzer.detectQueryType(query));
+
+    query = "SHOW CATALOGS LIKE 'foo'";
+    assertEquals("ShowCatalogs", QueryAnalyzer.detectQueryType(query));
+  }
 }
