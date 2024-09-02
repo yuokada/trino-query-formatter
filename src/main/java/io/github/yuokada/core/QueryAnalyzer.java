@@ -10,7 +10,8 @@ import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
 import java.util.HashSet;
 import java.util.Set;
-import org.antlr.v4.runtime.ANTLRInputStream;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenSource;
 import org.jboss.logging.Logger;
@@ -45,7 +46,7 @@ public class QueryAnalyzer {
   }
 
   public static void dumpToken(String sql) {
-    ANTLRInputStream stream = new ANTLRInputStream(sql);
+    CharStream stream = CharStreams.fromString(sql);
     TokenSource lexer = new DelimiterLexer(stream, ImmutableSet.of(";", "\\G"));
     var toContinue = true;
     while (toContinue) {
