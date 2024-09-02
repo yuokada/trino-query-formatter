@@ -9,7 +9,6 @@ import io.trino.sql.tree.Expression;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
@@ -34,7 +33,7 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
       StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
       for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
         Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
-        printResult(catalogs, Optional.empty());
+        printResult(catalogs);
       }
     } else {
       Integer queryCounter = 0;
@@ -47,7 +46,7 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
           for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
             queryCounter++;
             Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
-            printResult(catalogs, Optional.of(queryCounter));
+            printResult(catalogs, queryCounter);
           }
           // Replace buffer with trailing partial statement
           buffer = new StringBuilder();
@@ -60,21 +59,24 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
         if (!sql.isEmpty()) {
           queryCounter++;
           Set<String> catalogs = QueryAnalyzer.collectCatalogs(sql);
-          printResult(catalogs, Optional.of(queryCounter));
+          printResult(catalogs, queryCounter);
         }
       }
     }
     return ExitCode.OK;
   }
 
-  private static void printResult(Set<String> catalogs, Optional<Integer> queryId) {
+  private static void printResult(Set<String> catalogs) {
+    printResult(catalogs, null);
+  }
+
+  private static void printResult(Set<String> catalogs, Integer queryId) {
     System.out.println("=========================");
     if (catalogs.isEmpty()) {
       System.out.println("No catalogs found.");
     } else {
-      if (queryId.isPresent()) {
-        System.out.printf("Catalogs of Query No %d: [%s]\n",
-            queryId.get(), String.join(",", catalogs));
+      if (queryId != null) {
+        System.out.printf("Catalogs of Query No %d: [%s]\n", queryId, String.join(",", catalogs));
       } else {
         System.out.printf("Catalogs: [%s]\n", String.join(",", catalogs));
       }
