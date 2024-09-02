@@ -1,24 +1,24 @@
 package io.github.yuokada.subcommand;
 
-import static com.google.common.base.Preconditions.checkState;
-import static io.trino.sql.SqlFormatter.formatSql;
-
 import com.google.common.collect.ImmutableSet;
 import io.github.yuokada.EntryCommand;
+import io.github.yuokada.core.QueryAnalyzer;
 import io.trino.cli.lexer.StatementSplitter;
 import io.trino.sql.parser.SqlParser;
-import io.trino.sql.tree.Statement;
+import io.trino.sql.tree.Expression;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
-@CommandLine.Command(name = "format", description = "Format SQL query")
-public class Format implements Callable<Integer>, SubCommandUtil {
+@CommandLine.Command(name = "analyze", description = "Analyze SQL query")
+public class Analyze implements Callable<Integer>, SubCommandUtil {
 
   @ParentCommand
   private EntryCommand entryCommand;
@@ -33,10 +33,11 @@ public class Format implements Callable<Integer>, SubCommandUtil {
       String sql = readFromFile(sqlFile);
       StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
       for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-        String formatted = format(split.statement());
-        System.out.println(formatted + ";");
+        Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
+        printResult(catalogs, Optional.empty());
       }
     } else {
+      Integer queryCounter = 0;
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
         StringBuilder buffer = new StringBuilder();
         while (reader.ready()) {
@@ -44,11 +45,11 @@ public class Format implements Callable<Integer>, SubCommandUtil {
           String sql = buffer.toString();
           StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
           for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-            String formatted = format(split.statement());
-            System.out.println(formatted + ";");
+            queryCounter++;
+            Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
+            printResult(catalogs, Optional.of(queryCounter));
           }
-
-          // replace buffer with trailing partial statement
+          // Replace buffer with trailing partial statement
           buffer = new StringBuilder();
           String partial = splitter.getPartialStatement();
           if (!partial.isEmpty()) {
@@ -57,20 +58,31 @@ public class Format implements Callable<Integer>, SubCommandUtil {
         }
         String sql = buffer.toString();
         if (!sql.isEmpty()) {
-          String formatted = format(sql);
-          System.out.println(formatted + ";");
+          queryCounter++;
+          Set<String> catalogs = QueryAnalyzer.collectCatalogs(sql);
+          printResult(catalogs, Optional.of(queryCounter));
         }
       }
     }
     return ExitCode.OK;
   }
 
-  private static String format(String sql) {
-    Statement statement = sqlParser.createStatement(sql);
-    String formattedSql = formatSql(statement);
-    checkState(
-        statement.equals(sqlParser.createStatement(formattedSql)),
-        "Formatted SQL is different than original");
-    return formattedSql;
+  private static void printResult(Set<String> catalogs, Optional<Integer> queryId) {
+    System.out.println("=========================");
+    if (catalogs.isEmpty()) {
+      System.out.println("No catalogs found.");
+    } else {
+      if (queryId.isPresent()) {
+        System.out.printf("Catalogs of Query No %d: [%s]\n",
+            queryId.get(), String.join(",", catalogs));
+      } else {
+        System.out.printf("Catalogs: [%s]\n", String.join(",", catalogs));
+      }
+    }
+  }
+
+  private static String analyze(String sql) {
+    Expression expression = sqlParser.createExpression(sql);
+    return expression.toString();
   }
 }
