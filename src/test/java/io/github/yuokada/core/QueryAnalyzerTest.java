@@ -14,11 +14,36 @@ class QueryAnalyzerTest {
         """;
     assertEquals(Set.of("catalog1"), QueryAnalyzer.collectCatalogs(sql));
   }
+  @Test
+  void testCollectCatalogsWithUnion() {
+    String sql = """
+        SELECT * FROM catalog1.schema.tbl1
+        UNION ALL
+        SELECT * FROM catalog2.schema.tbl1
+        """;
+    assertEquals(Set.of("catalog1", "catalog2"), QueryAnalyzer.collectCatalogs(sql));
+  }
 
   @Test
   void testCollectCatalogsWithSampleQuery2() {
     String sql = """
         SELECT
+            TD_TIME_FORMAT(time, 'yyyy-MM-dd', 'JST')
+            , COUNT(*) AS "ALL" -- sample comment
+            , COUNT(*) FILTER (WHERE REGEXP_LIKE(message, 'io.trino.execution')) AS "Only io.trino.execution"
+            , COUNT(*) FILTER (WHERE REGEXP_LIKE(message, 'io.trino.util')) AS "Only io.trino.util.CompilerUtils"
+        FROM cat1.scm1.tb1
+        WHERE TD_INTERVAL(time, '-7d')
+        GROUP BY 1
+        ORDER BY 1,2
+        """;
+    assertEquals(Set.of("cat1"), QueryAnalyzer.collectCatalogs(sql));
+  }
+
+  @Test
+  void testCollectCatalogsWithSampleQuery3() {
+    String sql = """
+        CREATE TABLE cat1.db1.tbl1 AS SELECT
             TD_TIME_FORMAT(time, 'yyyy-MM-dd', 'JST')
             , COUNT(*) AS "ALL" -- sample comment
             , COUNT(*) FILTER (WHERE REGEXP_LIKE(message, 'io.trino.execution')) AS "Only io.trino.execution"
