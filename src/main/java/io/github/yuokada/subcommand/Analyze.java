@@ -13,6 +13,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.Token;
@@ -37,7 +39,17 @@ public class Analyze implements Callable<Integer> {
     if (!sqlFile.isEmpty()) {
       String sql = readFromFile(sqlFile);
       dumpToken(sql);
+      List<String> catalogs = collectCatalogs(sql);
+      System.out.println("=========================");
+      if (catalogs.isEmpty()) {
+        System.out.println("No catalogs found.");
+      } else {
+        System.out.println("Catalogs:");
+        System.out.println("---------");
+        System.out.println(String.join("\n", catalogs));
+      }
     } else {
+      // TODO: Implement the following logic
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
         StringBuilder buffer = new StringBuilder();
         while (reader.ready()) {
@@ -76,11 +88,43 @@ public class Analyze implements Callable<Integer> {
         toContinue = false;
       } else if (token.getType() == SqlBaseParser.DELIMITER) {
         System.out.println(token.getText());
+      } else if (token.getType() == SqlBaseParser.EMPTY
+          || token.getType() == SqlBaseParser.COMMENT
+          || token.getType() == SqlBaseParser.WS) {
+        // Do nothing
       } else {
+        // System.out.println("\"" + token + "\"" );
         System.out.println(token.getText());
       }
     }
   }
+
+  private static List<String> collectCatalogs(String sql) {
+    ANTLRInputStream stream = new ANTLRInputStream(sql);
+    TokenSource lexer = new DelimiterLexer(stream, ImmutableSet.of(";", "\\G"));
+    List<String> catalogs = new ArrayList<>();
+    var toContinue = true;
+    while (toContinue) {
+      Token token = lexer.nextToken();
+      if (token.getType() == Token.EOF) {
+        toContinue = false;
+      } else if (token.getType() == SqlBaseParser.CATALOG || token.getType() == SqlBaseParser.CATALOGS){
+        catalogs.add(token.getText());
+      } else if (token.getType() == SqlBaseParser.TABLE) {
+        catalogs.add(token.getText());
+      } else if (token.getType() == SqlBaseParser.IDENTIFIER) {
+        System.out.println("DEBUG: " + token);
+//        catalogs.add(token.getText());
+      } else if (token.getText().equals("cat1")) {
+        // DEBUG BLOCK
+//        System.out.println("DEBUG: " + token);
+//        System.out.println("DEBUG: " + token.getType());
+        catalogs.add(token.getText());
+      }
+    }
+    return catalogs;
+  }
+
 
   private static String readFromFile(String sqlFile) throws IOException {
     return String.join("\n", Files
