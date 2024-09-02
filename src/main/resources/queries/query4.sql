@@ -8,3 +8,6 @@ WHERE TD_INTERVAL(time, '-7d')
 GROUP BY 1
 ORDER BY 1,2
 ;
+DROP TABLE IF EXISTS cat2.scm1.tb1;
+
+SELECT * FROM catalog1.schema.tbl1

@@ -11,9 +11,6 @@ import io.trino.sql.tree.Statement;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -21,11 +18,11 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "format", description = "Format SQL query")
-public class Format implements Callable<Integer> {
+public class Format implements Callable<Integer>, SubCommandUtil {
 
   @ParentCommand
   private EntryCommand entryCommand;
-  private static SqlParser sqlParser = new SqlParser();
+  private static final SqlParser sqlParser = new SqlParser();
 
   @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
   String sqlFile;
@@ -43,7 +40,7 @@ public class Format implements Callable<Integer> {
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
         StringBuilder buffer = new StringBuilder();
         while (reader.ready()) {
-          buffer.append(reader.readLine() + "\n");
+          buffer.append(reader.readLine()).append("\n");
           String sql = buffer.toString();
           StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
           for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
@@ -66,12 +63,6 @@ public class Format implements Callable<Integer> {
       }
     }
     return ExitCode.OK;
-  }
-
-  private static String readFromFile(String sqlFile) throws IOException {
-    String contents = String.join("\n", Files
-        .readAllLines(Path.of(sqlFile), StandardCharsets.UTF_8));
-    return contents;
   }
 
   private static String format(String sql) {
