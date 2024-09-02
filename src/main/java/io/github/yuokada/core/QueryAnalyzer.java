@@ -85,9 +85,9 @@ public class QueryAnalyzer {
         || statement instanceof Update) {
       return statement.getClass().getSimpleName();
     } else if (statement instanceof CreateTable) {
-      return "CREATE";
+      return statement.getClass().getSimpleName();
     } else if (statement instanceof DropTable) {
-      return "CREATE";
+      return statement.getClass().getSimpleName();
     } else if (statement instanceof ShowCatalogs
                || statement instanceof CreateCatalog
                || statement instanceof DropCatalog
