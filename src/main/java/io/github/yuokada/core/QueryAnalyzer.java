@@ -8,9 +8,7 @@ import io.trino.sql.tree.Node;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.Token;
@@ -18,12 +16,13 @@ import org.antlr.v4.runtime.TokenSource;
 import org.jboss.logging.Logger;
 
 public class QueryAnalyzer {
+
   static final Logger logger = Logger.getLogger(QueryAnalyzer.class);
 
   private static final SqlParser sqlParser = new SqlParser();
 
-  private static List<String> extractCatalogs(Node node) {
-    List<String> catalogs = new ArrayList<>();
+  private static Set<String> extractCatalogs(Node node) {
+    Set<String> catalogs = new HashSet<>();
     if (node instanceof Table table) {
       QualifiedName name = table.getName();
       if (name.getPrefix().isPresent()) {
