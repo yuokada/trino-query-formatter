@@ -2,6 +2,7 @@ package io.github.yuokada;
 
 import io.github.yuokada.subcommand.Analyze;
 import io.github.yuokada.subcommand.Format;
+import io.github.yuokada.subcommand.Lexer;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import java.io.IOException;
 import java.util.concurrent.Callable;
@@ -16,6 +17,7 @@ import picocli.CommandLine.Option;
     name = "trino-query-formatter",
     subcommands = {
         Analyze.class,
+        Lexer.class,
         Format.class
     },
     mixinStandardHelpOptions = true,
