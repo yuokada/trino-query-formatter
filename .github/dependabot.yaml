@@ -21,5 +21,5 @@ updates:
         patterns:
           - "org.apache.maven.plugins*"
     ignore:
-      - dependency-name: "io.quarkus.platform"
+      - dependency-name: "io.quarkus.platform:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
