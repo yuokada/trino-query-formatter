@@ -19,12 +19,18 @@ import picocli.CommandLine.ParentCommand;
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer>, SubCommandUtil {
 
-  @ParentCommand
-  private EntryCommand entryCommand;
-  private static final SqlParser sqlParser = new SqlParser();
+  /**
+     * The parent command.
+     */
+    @ParentCommand
+    private EntryCommand entryCommand;
+    private static final SqlParser sqlParser = new SqlParser();
 
-  @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
-  String sqlFile;
+    /**
+     * The file to analyze.
+     */
+    @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
+    private String sqlFile;
 
   @Override
   public Integer call() throws IOException {
@@ -64,6 +70,10 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
       }
     }
     return ExitCode.OK;
+  }
+
+  private String readFromFile(String path) throws IOException {
+    return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
   }
 
   private static void printResult(Set<String> catalogs) {

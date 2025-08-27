@@ -25,24 +25,37 @@ public class EntryCommand implements Callable<Integer> {
 
   private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
 
-  @Option(
-      names = {"-V", "--version"},
-      versionHelp = true,
-      description = "print version information and exit")
-  boolean versionRequested;
+      /**
+     * The version of the command.
+     */
+    @CommandLine.Option(
+            names = {"--version", "-V"},
+            versionHelp = true,
+            description = "print version information and exit")
+    private boolean versionRequested;
 
-  @Option(
-      names = {"--help", "-h"},
-      usageHelp = true)
-  boolean help;
+    /**
+     * Show help message.
+     */
+    @CommandLine.Option(
+            names = {"--help", "-h"},
+            usageHelp = true,
+            description = "show this help message and exit")
+    private boolean help;
 
   public static void main(String[] args) throws IOException {
     int exitCode = new CommandLine(new EntryCommand()).execute(args);
     System.exit(exitCode);
   }
 
-  @Override
-  public Integer call() throws Exception {
+      /**
+     * The main entry point of the command.
+     *
+     * @return The exit code.
+     * @throws Exception If an error occurs.
+     */
+    @Override
+    public Integer call() throws Exception {
     CommandLine.usage(this, System.out);
     // Quarkus.waitForExit();
     return ExitCode.OK;

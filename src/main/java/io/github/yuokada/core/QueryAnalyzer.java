@@ -25,59 +25,90 @@ import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenSource;
 import org.jboss.logging.Logger;
 
-public class QueryAnalyzer {
+public final class QueryAnalyzer {
 
-  static final Logger logger = Logger.getLogger(QueryAnalyzer.class);
+    private QueryAnalyzer() {}
 
-  private static final SqlParser sqlParser = new SqlParser();
+    /**
+     * Logger for this class.
+     */
+    private static final Logger LOGGER = Logger.getLogger(QueryAnalyzer.class);
 
-  private static Set<String> extractCatalogs(Node node) {
-    Set<String> catalogs = new HashSet<>();
-    if (node instanceof Table table) {
-      QualifiedName name = table.getName();
-      if (name.getPrefix().isPresent()) {
-        catalogs.add(name.getPrefix().get().getOriginalParts().get(0).toString());
-      }
+    /**
+     * SQL parser for this class.
+     */
+    private static final SqlParser sqlParser = new SqlParser();
+
+    /**
+     * Extracts catalogs from a given node.
+     *
+     * @param node The node to extract catalogs from.
+     * @return A set of catalogs.
+     */
+    private static Set<String> extractCatalogs(Node node) {
+        Set<String> catalogs = new HashSet<>();
+        if (node instanceof Table table) {
+            QualifiedName name = table.getName();
+            if (name.getPrefix().isPresent()) {
+                catalogs.add(name.getPrefix().get().getOriginalParts().get(0).toString());
+            }
+        }
+        for (Node child : node.getChildren()) {
+            catalogs.addAll(extractCatalogs(child));
+        }
+        return catalogs;
     }
-    for (Node child : node.getChildren()) {
-      catalogs.addAll(extractCatalogs(child));
-    }
-    return catalogs;
-  }
 
-  public static Set<String> collectCatalogs(String sql) {
-    Statement statement = sqlParser.createStatement(sql);
-    Set<String> catalogs = new HashSet<>();
-    for (Node child : statement.getChildren()) {
-      catalogs.addAll(extractCatalogs(child));
+    /**
+     * Collects catalogs from a given SQL query.
+     *
+     * @param sql The SQL query.
+     * @return A set of catalogs.
+     */
+    public static Set<String> collectCatalogs(String sql) {
+        Statement statement = sqlParser.createStatement(sql);
+        Set<String> catalogs = new HashSet<>();
+        for (Node child : statement.getChildren()) {
+            catalogs.addAll(extractCatalogs(child));
+        }
+        return catalogs;
     }
-    return catalogs;
-  }
 
-  public static void dumpToken(String sql) {
-    CharStream stream = CharStreams.fromString(sql);
-    TokenSource lexer = new DelimiterLexer(stream, ImmutableSet.of(";", "\\G"));
-    var toContinue = true;
-    while (toContinue) {
-      Token token = lexer.nextToken();
-      logger.debug("Token: " + token);
-      if (token.getType() == Token.EOF) {
-        toContinue = false;
-      } else if (token.getType() == SqlBaseParser.DELIMITER) {
-        System.out.println(token.getText());
-      } else if (token.getType() == SqlBaseParser.EMPTY
-                 || token.getType() == SqlBaseParser.COMMENT
-                 || token.getType() == SqlBaseParser.WS) {
-        // Do nothing
-        logger.debug("Skip: " + token);
-      } else {
-        // System.out.println("\"" + token + "\"" );
-        System.out.println(token.getText());
-      }
+    /**
+     * Dumps tokens from a given SQL query.
+     *
+     * @param sql The SQL query.
+     */
+    public static void dumpToken(String sql) {
+        CharStream stream = CharStreams.fromString(sql);
+        TokenSource lexer = new DelimiterLexer(stream, ImmutableSet.of(";", "\\G"));
+        var toContinue = true;
+        while (toContinue) {
+            Token token = lexer.nextToken();
+            LOGGER.debug("Token: " + token);
+            if (token.getType() == Token.EOF) {
+                toContinue = false;
+            } else if (token.getType() == SqlBaseParser.DELIMITER) {
+                System.out.println(token.getText());
+            } else if (token.getType() == SqlBaseParser.EMPTY
+                    || token.getType() == SqlBaseParser.COMMENT
+                    || token.getType() == SqlBaseParser.WS) {
+                // Do nothing
+                LOGGER.debug("Skip: " + token);
+            } else {
+                // System.out.println("\"" + token + "\"");
+                System.out.println(token.getText());
+            }
+        }
     }
-  }
 
-  public static String detectQueryType(String sql) {
+    /**
+     * Detects the query type of a given SQL query.
+     *
+     * @param sql The SQL query.
+     * @return The query type.
+     */
+    public static String detectQueryType(String sql) {
     Statement statement = sqlParser.createStatement(sql);
     if (statement instanceof Query
         || statement instanceof Insert
