@@ -43,3 +43,11 @@ nb-configuration.xml
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# Local tooling/session artifacts
+.serena/
+!.serena/project.yml
+
+# Accidental Node artifacts (not used)
+package.json
+package-lock.json
