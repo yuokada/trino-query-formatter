@@ -15,7 +15,7 @@
         <quarkus.platform.version>3.20.2.1</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.3</surefire-plugin.version>
-        <checkstyle.version>3.4.0</checkstyle.version>
+        <checkstyle.version>3.6.0</checkstyle.version>
         <!-- App specific properties -->
         <trino.version>435</trino.version>
     </properties>
