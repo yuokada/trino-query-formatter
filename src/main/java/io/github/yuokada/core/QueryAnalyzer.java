@@ -12,6 +12,8 @@ import io.trino.sql.tree.Delete;
 import io.trino.sql.tree.DropCatalog;
 import io.trino.sql.tree.DropTable;
 import io.trino.sql.tree.Insert;
+import io.trino.sql.tree.FunctionCall;
+import io.trino.sql.tree.Join;
 import io.trino.sql.tree.Limit;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.QualifiedName;
@@ -20,6 +22,8 @@ import io.trino.sql.tree.ShowCatalogs;
 import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
 import io.trino.sql.tree.Update;
+import io.trino.sql.tree.With;
+import io.trino.sql.tree.WithQuery;
 import java.util.HashSet;
 import java.util.Set;
 import org.antlr.v4.runtime.CharStream;
@@ -83,6 +87,13 @@ public final class QueryAnalyzer {
      * Focuses on query type, catalogs, tables and simple flags.
      */
     public static QueryAnalysisResult analyze(String sql) {
+        return analyze(sql, null, null);
+    }
+
+    /**
+     * Performs analysis with optional default catalog/schema for name resolution.
+     */
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog, String defaultSchema) {
         QueryAnalysisResult.Builder b = new QueryAnalysisResult.Builder();
         try {
             Statement statement = sqlParser.createStatement(sql);
@@ -91,7 +102,7 @@ public final class QueryAnalyzer {
             // Catalogs and tables
             Set<String> catalogs = new HashSet<>();
             Set<String> tables = new HashSet<>();
-            collectTablesAndCatalogs(statement, tables, catalogs);
+            collectTablesAndCatalogs(statement, tables, catalogs, defaultCatalog, defaultSchema);
             b.addAllCatalogs(catalogs).addAllTables(tables);
             // Flags
             b.usesSelectStar(containsNode(statement, AllColumns.class));
@@ -99,6 +110,8 @@ public final class QueryAnalyzer {
             if (statement instanceof Delete del) {
                 b.hasWhereOnDelete(del.getWhere().isPresent());
             }
+            // Extended details
+            collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs);
             return b.build();
         } catch (RuntimeException e) {
             // Return partial info with parse error message
@@ -110,47 +123,80 @@ public final class QueryAnalyzer {
      * Collects table and catalog references from the AST.
      */
     private static void collectTablesAndCatalogs(Node node, Set<String> tables,
-        Set<String> catalogs) {
+        Set<String> catalogs, String defaultCatalog, String defaultSchema) {
         if (node instanceof Table table) {
             QualifiedName qn = table.getName();
             // Join original parts to preserve quoted identifiers as much as possible
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
+            String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
             tables.add(joined);
-            if (qn.getPrefix().isPresent()) {
-                catalogs.add(qn.getPrefix().get().getOriginalParts().get(0).toString());
-            }
         } else if (node instanceof Insert ins) {
             // Include target table name as a table reference
             QualifiedName qn = ins.getTarget();
             if (qn != null) {
-                String joined = String.join(".",
-                    qn.getOriginalParts().stream().map(Object::toString).toList());
+                String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
                 tables.add(joined);
-                if (qn.getOriginalParts().size() > 2) {
-                    catalogs.add(qn.getOriginalParts().get(0).toString());
-                }
             }
         } else if (node instanceof CreateTable ct) {
             QualifiedName qn = ct.getName();
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
+            String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
             tables.add(joined);
-            if (qn.getOriginalParts().size() > 2) {
-                catalogs.add(qn.getOriginalParts().get(0).toString());
-            }
         } else if (node instanceof CreateTableAsSelect ctas) {
             QualifiedName qn = ctas.getName();
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
+            String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
             tables.add(joined);
-            if (qn.getOriginalParts().size() > 2) {
-                catalogs.add(qn.getOriginalParts().get(0).toString());
-            }
         }
         for (Node child : node.getChildren()) {
-            collectTablesAndCatalogs(child, tables, catalogs);
+            collectTablesAndCatalogs(child, tables, catalogs, defaultCatalog, defaultSchema);
         }
+    }
+
+    /**
+     * Collects extended information: CTE names, join descriptors, function usage and write targets.
+     */
+    private static void collectExtendedDetails(Node node, QueryAnalysisResult.Builder b,
+        String defaultCatalog, String defaultSchema, java.util.Set<String> catalogs) {
+        if (node instanceof With with) {
+            for (WithQuery wq : with.getQueries()) {
+                b.addCte(wq.getName().getValue());
+            }
+        } else if (node instanceof Join join) {
+            String type = join.getType().name();
+            String desc = type + ":" + (join.getCriteria().isPresent() ? "on" : "none");
+            b.addJoin(desc);
+        } else if (node instanceof FunctionCall fc) {
+            String fn = fc.getName().toString();
+            String lower = fn.toLowerCase();
+            if (fc.getWindow().isPresent()) {
+                b.addFunctionWindow(lower);
+            } else if (isAggregateName(lower)) {
+                b.addFunctionAggregate(lower);
+            } else {
+                b.addFunctionScalar(lower);
+            }
+        } else if (node instanceof Insert ins) {
+            QualifiedName qn = ins.getTarget();
+            if (qn != null) {
+                String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
+                b.addWriteTarget(joined);
+            }
+        } else if (node instanceof CreateTable ct) {
+            QualifiedName qn = ct.getName();
+            String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
+            b.addWriteTarget(joined);
+        } else if (node instanceof CreateTableAsSelect ctas) {
+            QualifiedName qn = ctas.getName();
+            String joined = resolveName(qn, defaultCatalog, defaultSchema, catalogs);
+            b.addWriteTarget(joined);
+        }
+        for (Node child : node.getChildren()) {
+            collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs);
+        }
+    }
+
+    private static boolean isAggregateName(String lower) {
+        return lower.equals("count") || lower.equals("sum") || lower.equals("avg")
+            || lower.equals("min") || lower.equals("max") || lower.equals("array_agg")
+            || lower.equals("approx_distinct");
     }
 
     /**
@@ -249,8 +295,41 @@ public final class QueryAnalyzer {
     }
 
     /**
+     * Resolves a QualifiedName into a fully qualified name string, applying defaults when provided.
+     * Also updates the given catalogs set when a catalog can be determined.
+     */
+    private static String resolveName(QualifiedName qn, String defaultCatalog, String defaultSchema,
+        java.util.Set<String> catalogs) {
+        var parts = qn.getOriginalParts();
+        if (parts.size() >= 3) {
+            catalogs.add(parts.get(0).toString());
+            return String.join(".", parts.stream().map(Object::toString).toList());
+        } else if (parts.size() == 2) {
+            String schema = parts.get(0).toString();
+            String table = parts.get(1).toString();
+            if (defaultCatalog != null && !defaultCatalog.isEmpty()) {
+                catalogs.add(defaultCatalog);
+                return String.join(".", defaultCatalog, schema, table);
+            }
+            return String.join(".", schema, table);
+        } else { // size == 1
+            String table = parts.get(0).toString();
+            if (defaultCatalog != null && !defaultCatalog.isEmpty() && defaultSchema != null
+                && !defaultSchema.isEmpty()) {
+                catalogs.add(defaultCatalog);
+                return String.join(".", defaultCatalog, defaultSchema, table);
+            }
+            return table;
+        }
+    }
+
+
+
+
+
+
+    /**
      * Detects the query type of a given SQL query.
-     *
      * @param sql The SQL query.
      * @return The query type.
      */
@@ -267,11 +346,11 @@ public final class QueryAnalyzer {
             return statement.getClass().getSimpleName();
         } else if (statement instanceof ShowCatalogs
             || statement instanceof CreateCatalog
-            || statement instanceof DropCatalog
-        ) {
+            || statement instanceof DropCatalog) {
             return statement.getClass().getSimpleName();
         } else {
             return String.format("Unknown: %s", statement.getClass().getSimpleName());
         }
     }
+
 }

@@ -38,6 +38,30 @@ public final class QueryAnalysisResult {
      * Parse error message when parsing failed; otherwise null.
      */
     private final String parseError; // optional
+    /**
+     * CTE names defined in the statement.
+     */
+    private final Set<String> ctes = new LinkedHashSet<>();
+    /**
+     * Join descriptors like "INNER:on", "LEFT:on", "CROSS:none".
+     */
+    private final Set<String> joins = new LinkedHashSet<>();
+    /**
+     * Scalar (non-aggregate, non-window) function names.
+     */
+    private final Set<String> functionsScalar = new LinkedHashSet<>();
+    /**
+     * Aggregate function names (heuristic).
+     */
+    private final Set<String> functionsAggregate = new LinkedHashSet<>();
+    /**
+     * Window function names.
+     */
+    private final Set<String> functionsWindow = new LinkedHashSet<>();
+    /**
+     * Write target names such as INSERT/CREATE TABLE targets.
+     */
+    private final Set<String> writeTargets = new LinkedHashSet<>();
 
     private QueryAnalysisResult(Builder b) {
         this.queryType = b.queryType;
@@ -47,6 +71,12 @@ public final class QueryAnalysisResult {
         this.hasLimit = b.hasLimit;
         this.hasWhereOnDelete = b.hasWhereOnDelete;
         this.parseError = b.parseError;
+        this.ctes.addAll(b.ctes);
+        this.joins.addAll(b.joins);
+        this.functionsScalar.addAll(b.functionsScalar);
+        this.functionsAggregate.addAll(b.functionsAggregate);
+        this.functionsWindow.addAll(b.functionsWindow);
+        this.writeTargets.addAll(b.writeTargets);
     }
 
     /**
@@ -97,6 +127,42 @@ public final class QueryAnalysisResult {
     public String getParseError() {
         return parseError;
     }
+    /**
+     * @return CTE names.
+     */
+    public Set<String> getCtes() {
+        return Collections.unmodifiableSet(ctes);
+    }
+    /**
+     * @return Join descriptors.
+     */
+    public Set<String> getJoins() {
+        return Collections.unmodifiableSet(joins);
+    }
+    /**
+     * @return Scalar function names.
+     */
+    public Set<String> getFunctionsScalar() {
+        return Collections.unmodifiableSet(functionsScalar);
+    }
+    /**
+     * @return Aggregate function names.
+     */
+    public Set<String> getFunctionsAggregate() {
+        return Collections.unmodifiableSet(functionsAggregate);
+    }
+    /**
+     * @return Window function names.
+     */
+    public Set<String> getFunctionsWindow() {
+        return Collections.unmodifiableSet(functionsWindow);
+    }
+    /**
+     * @return Write target names.
+     */
+    public Set<String> getWriteTargets() {
+        return Collections.unmodifiableSet(writeTargets);
+    }
 
     /**
      * Builds a compact JSON string representing this result.
@@ -110,6 +176,12 @@ public final class QueryAnalysisResult {
         appendArray(sb, "catalogs", catalogs);
         appendArray(sb, "tables", tables);
         appendField(sb, "usesSelectStar", Boolean.toString(usesSelectStar), false);
+        appendArray(sb, "ctes", ctes);
+        appendArray(sb, "joins", joins);
+        appendArray(sb, "functionsScalar", functionsScalar);
+        appendArray(sb, "functionsAggregate", functionsAggregate);
+        appendArray(sb, "functionsWindow", functionsWindow);
+        appendArray(sb, "writeTargets", writeTargets);
         if (hasLimit != null) {
             appendField(sb, "hasLimit", Boolean.toString(hasLimit), false);
         }
@@ -215,6 +287,18 @@ public final class QueryAnalysisResult {
          * Parse error message (nullable).
          */
         private String parseError;
+        /** CTE names. */
+        private final Set<String> ctes = new LinkedHashSet<>();
+        /** Join descriptors. */
+        private final Set<String> joins = new LinkedHashSet<>();
+        /** Scalar function names. */
+        private final Set<String> functionsScalar = new LinkedHashSet<>();
+        /** Aggregate function names. */
+        private final Set<String> functionsAggregate = new LinkedHashSet<>();
+        /** Window function names. */
+        private final Set<String> functionsWindow = new LinkedHashSet<>();
+        /** Write targets. */
+        private final Set<String> writeTargets = new LinkedHashSet<>();
 
         /**
          * @param v query type value
@@ -302,6 +386,72 @@ public final class QueryAnalysisResult {
          */
         public Builder parseError(String v) {
             this.parseError = v;
+            return this;
+        }
+
+        /**
+         * @param v CTE name to add
+         * @return Builder instance
+         */
+        public Builder addCte(String v) {
+            if (Objects.nonNull(v)) {
+                ctes.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v Join descriptor to add
+         * @return Builder instance
+         */
+        public Builder addJoin(String v) {
+            if (Objects.nonNull(v)) {
+                joins.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v Scalar function name to add
+         * @return Builder instance
+         */
+        public Builder addFunctionScalar(String v) {
+            if (Objects.nonNull(v)) {
+                functionsScalar.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v Aggregate function name to add
+         * @return Builder instance
+         */
+        public Builder addFunctionAggregate(String v) {
+            if (Objects.nonNull(v)) {
+                functionsAggregate.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v Window function name to add
+         * @return Builder instance
+         */
+        public Builder addFunctionWindow(String v) {
+            if (Objects.nonNull(v)) {
+                functionsWindow.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v Write target name to add
+         * @return Builder instance
+         */
+        public Builder addWriteTarget(String v) {
+            if (Objects.nonNull(v)) {
+                writeTargets.add(v);
+            }
             return this;
         }
 
