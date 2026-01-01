@@ -127,36 +127,42 @@ public final class QueryAnalysisResult {
     public String getParseError() {
         return parseError;
     }
+
     /**
      * @return CTE names.
      */
     public Set<String> getCtes() {
         return Collections.unmodifiableSet(ctes);
     }
+
     /**
      * @return Join descriptors.
      */
     public Set<String> getJoins() {
         return Collections.unmodifiableSet(joins);
     }
+
     /**
      * @return Scalar function names.
      */
     public Set<String> getFunctionsScalar() {
         return Collections.unmodifiableSet(functionsScalar);
     }
+
     /**
      * @return Aggregate function names.
      */
     public Set<String> getFunctionsAggregate() {
         return Collections.unmodifiableSet(functionsAggregate);
     }
+
     /**
      * @return Window function names.
      */
     public Set<String> getFunctionsWindow() {
         return Collections.unmodifiableSet(functionsWindow);
     }
+
     /**
      * @return Write target names.
      */
@@ -287,17 +293,29 @@ public final class QueryAnalysisResult {
          * Parse error message (nullable).
          */
         private String parseError;
-        /** CTE names. */
+        /**
+         * CTE names.
+         */
         private final Set<String> ctes = new LinkedHashSet<>();
-        /** Join descriptors. */
+        /**
+         * Join descriptors.
+         */
         private final Set<String> joins = new LinkedHashSet<>();
-        /** Scalar function names. */
+        /**
+         * Scalar function names.
+         */
         private final Set<String> functionsScalar = new LinkedHashSet<>();
-        /** Aggregate function names. */
+        /**
+         * Aggregate function names.
+         */
         private final Set<String> functionsAggregate = new LinkedHashSet<>();
-        /** Window function names. */
+        /**
+         * Window function names.
+         */
         private final Set<String> functionsWindow = new LinkedHashSet<>();
-        /** Write targets. */
+        /**
+         * Write targets.
+         */
         private final Set<String> writeTargets = new LinkedHashSet<>();
 
         /**

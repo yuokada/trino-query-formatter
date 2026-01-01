@@ -23,118 +23,146 @@ import picocli.CommandLine.ParentCommand;
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer>, SubCommandUtil {
 
-  /** The parent command. */
-  @ParentCommand
-  private EntryCommand entryCommand;
+    /**
+     * The parent command.
+     */
+    @ParentCommand
+    private EntryCommand entryCommand;
 
-  private static final SqlParser sqlParser = new SqlParser();
+    private static final SqlParser sqlParser = new SqlParser();
 
-  /** The file to analyze. */
-  @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
-  private String sqlFile;
+    /**
+     * The file to analyze.
+     */
+    @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
+    private String sqlFile;
 
-  /** Output format. Supported: text, json. */
-  @CommandLine.Option(
-      names = {"--format"},
-      defaultValue = "text",
-      description = "Output format: text|json")
-  String format;
+    /**
+     * Output format. Supported: text, json.
+     */
+    @CommandLine.Option(
+        names = {"--format"},
+        defaultValue = "text",
+        description = "Output format: text|json")
+    String format;
 
-  /** When true, also prints the AST of each statement. */
-  @CommandLine.Option(
-      names = {"--show-ast"},
-      defaultValue = "false",
-      description = "Show AST for each statement")
-  boolean showAst;
+    /**
+     * When true, also prints the AST of each statement.
+     */
+    @CommandLine.Option(
+        names = {"--show-ast"},
+        defaultValue = "false",
+        description = "Show AST for each statement")
+    boolean showAst;
 
-  /** Detail level. Supported: basic, full. Default: basic. */
-  @CommandLine.Option(
-      names = {"--details"},
-      defaultValue = "basic",
-      description = "Detail level: basic|full")
-  String details;
+    /**
+     * Detail level. Supported: basic, full. Default: basic.
+     */
+    @CommandLine.Option(
+        names = {"--details"},
+        defaultValue = "basic",
+        description = "Detail level: basic|full")
+    String details;
 
-  /** If specified, writes the output to the given file instead of stdout. */
-  @CommandLine.Option(names = {"--output"}, description = "Write output to the specified file path")
-  String outputPath;
+    /**
+     * If specified, writes the output to the given file instead of stdout.
+     */
+    @CommandLine.Option(names = {
+        "--output"}, description = "Write output to the specified file path")
+    String outputPath;
 
-  /** Default catalog for unqualified or partially qualified names. */
-  @CommandLine.Option(names = {"--catalog"}, description = "Default catalog for un/partially qualified names")
-  String defaultCatalog;
+    /**
+     * Default catalog for unqualified or partially qualified names.
+     */
+    @CommandLine.Option(names = {
+        "--catalog"}, description = "Default catalog for un/partially qualified names")
+    String defaultCatalog;
 
-  /** Default schema for unqualified names. */
-  @CommandLine.Option(names = {"--schema"}, description = "Default schema for unqualified names")
-  String defaultSchema;
+    /**
+     * Default schema for unqualified names.
+     */
+    @CommandLine.Option(names = {"--schema"}, description = "Default schema for unqualified names")
+    String defaultSchema;
 
-  @Override
-  public Integer call() throws IOException {
-    OutputEmitter emitter = new OutputEmitter(outputPath);
-    AnalysisPrinter printer = isJsonFormat()
-        ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst)
-        : new TextAnalysisPrinter(emitter, isFullDetails(), showAst);
+    @Override
+    public Integer call() throws IOException {
+        OutputEmitter emitter = new OutputEmitter(outputPath);
+        AnalysisPrinter printer = isJsonFormat()
+            ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst)
+            : new TextAnalysisPrinter(emitter, isFullDetails(), showAst);
 
-    if (!sqlFile.isEmpty()) {
-      String sql = readFromFile(sqlFile);
-      StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
-      for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-        QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(), defaultCatalog, defaultSchema);
-        printer.printStatement(result, null, split.statement());
-      }
-    } else {
-      Integer queryCounter = 0;
-      try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-        StringBuilder buffer = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-          buffer.append(line).append('\n');
-          String sql = buffer.toString();
-          StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
-          for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-            queryCounter++;
-            QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(), defaultCatalog, defaultSchema);
-            printer.printStatement(result, queryCounter, split.statement());
-          }
-          // Replace buffer with trailing partial statement
-          buffer = new StringBuilder();
-          String partial = splitter.getPartialStatement();
-          if (!partial.isEmpty()) {
-            buffer.append(partial).append('\n');
-          }
+        if (!sqlFile.isEmpty()) {
+            String sql = readFromFile(sqlFile);
+            StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
+            for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
+                QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(),
+                    defaultCatalog, defaultSchema);
+                printer.printStatement(result, null, split.statement());
+            }
+        } else {
+            Integer queryCounter = 0;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+                StringBuilder buffer = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    buffer.append(line).append('\n');
+                    String sql = buffer.toString();
+                    StatementSplitter splitter = new StatementSplitter(sql,
+                        ImmutableSet.of(";", "\\G"));
+                    for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
+                        queryCounter++;
+                        QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(),
+                            defaultCatalog, defaultSchema);
+                        printer.printStatement(result, queryCounter, split.statement());
+                    }
+                    // Replace buffer with trailing partial statement
+                    buffer = new StringBuilder();
+                    String partial = splitter.getPartialStatement();
+                    if (!partial.isEmpty()) {
+                        buffer.append(partial).append('\n');
+                    }
+                }
+                String sql = buffer.toString();
+                if (!sql.isEmpty()) {
+                    queryCounter++;
+                    QueryAnalysisResult result = QueryAnalyzer.analyze(sql, defaultCatalog,
+                        defaultSchema);
+                    printer.printStatement(result, queryCounter, sql);
+                }
+            }
         }
-        String sql = buffer.toString();
-        if (!sql.isEmpty()) {
-          queryCounter++;
-          QueryAnalysisResult result = QueryAnalyzer.analyze(sql, defaultCatalog, defaultSchema);
-          printer.printStatement(result, queryCounter, sql);
-        }
-      }
+
+        printer.close();
+        return ExitCode.OK;
     }
 
-    printer.close();
-    return ExitCode.OK;
-  }
+    private String readFromFile(String path) throws IOException {
+        return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+    }
 
-  private String readFromFile(String path) throws IOException {
-    return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
-  }
+    private static String analyze(String sql) {
+        Expression expression = sqlParser.createExpression(sql);
+        return expression.toString();
+    }
 
-  private static String analyze(String sql) {
-    Expression expression = sqlParser.createExpression(sql);
-    return expression.toString();
-  }
+    /**
+     * Checks if the selected output format is JSON.
+     */
+    private boolean isJsonFormat() {
+        return "json".equalsIgnoreCase(format);
+    }
 
-  /** Checks if the selected output format is JSON. */
-  private boolean isJsonFormat() {
-    return "json".equalsIgnoreCase(format);
-  }
+    /**
+     * Returns true when --details=basic is selected.
+     */
+    private boolean isBasicDetails() {
+        return "basic".equalsIgnoreCase(details);
+    }
 
-  /** Returns true when --details=basic is selected. */
-  private boolean isBasicDetails() {
-    return "basic".equalsIgnoreCase(details);
-  }
-
-  /** Returns true when --details=full is selected. */
-  private boolean isFullDetails() {
-    return "full".equalsIgnoreCase(details);
-  }
+    /**
+     * Returns true when --details=full is selected.
+     */
+    private boolean isFullDetails() {
+        return "full".equalsIgnoreCase(details);
+    }
 }

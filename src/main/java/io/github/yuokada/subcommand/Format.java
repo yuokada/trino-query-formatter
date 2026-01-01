@@ -20,7 +20,7 @@ import picocli.CommandLine.ParentCommand;
 @CommandLine.Command(name = "format", description = "Format SQL query")
 public class Format implements Callable<Integer>, SubCommandUtil {
 
-  /**
+    /**
      * The parent command.
      */
     @ParentCommand
@@ -33,54 +33,55 @@ public class Format implements Callable<Integer>, SubCommandUtil {
     @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
     private String sqlFile;
 
-  @Override
-  public Integer call() throws IOException {
-    if (!sqlFile.isEmpty()) {
-      String sql = readFromFile(sqlFile);
-      StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
-      for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-        String formatted = format(split.statement());
-        System.out.println(formatted + ";");
-      }
-    } else {
-      try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-        StringBuilder buffer = new StringBuilder();
-        while (reader.ready()) {
-          buffer.append(reader.readLine()).append("\n");
-          String sql = buffer.toString();
-          StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
-          for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-            String formatted = format(split.statement());
-            System.out.println(formatted + ";");
-          }
+    @Override
+    public Integer call() throws IOException {
+        if (!sqlFile.isEmpty()) {
+            String sql = readFromFile(sqlFile);
+            StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
+            for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
+                String formatted = format(split.statement());
+                System.out.println(formatted + ";");
+            }
+        } else {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+                StringBuilder buffer = new StringBuilder();
+                while (reader.ready()) {
+                    buffer.append(reader.readLine()).append("\n");
+                    String sql = buffer.toString();
+                    StatementSplitter splitter = new StatementSplitter(sql,
+                        ImmutableSet.of(";", "\\G"));
+                    for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
+                        String formatted = format(split.statement());
+                        System.out.println(formatted + ";");
+                    }
 
-          // replace buffer with trailing partial statement
-          buffer = new StringBuilder();
-          String partial = splitter.getPartialStatement();
-          if (!partial.isEmpty()) {
-            buffer.append(partial).append('\n');
-          }
+                    // replace buffer with trailing partial statement
+                    buffer = new StringBuilder();
+                    String partial = splitter.getPartialStatement();
+                    if (!partial.isEmpty()) {
+                        buffer.append(partial).append('\n');
+                    }
+                }
+                String sql = buffer.toString();
+                if (!sql.isEmpty()) {
+                    String formatted = format(sql);
+                    System.out.println(formatted + ";");
+                }
+            }
         }
-        String sql = buffer.toString();
-        if (!sql.isEmpty()) {
-          String formatted = format(sql);
-          System.out.println(formatted + ";");
-        }
-      }
+        return ExitCode.OK;
     }
-    return ExitCode.OK;
-  }
 
-  private String readFromFile(String path) throws IOException {
-    return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
-  }
+    private String readFromFile(String path) throws IOException {
+        return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+    }
 
-  private static String format(String sql) {
-    Statement statement = sqlParser.createStatement(sql);
-    String formattedSql = formatSql(statement);
-    checkState(
-        statement.equals(sqlParser.createStatement(formattedSql)),
-        "Formatted SQL is different than original");
-    return formattedSql;
-  }
+    private static String format(String sql) {
+        Statement statement = sqlParser.createStatement(sql);
+        String formattedSql = formatSql(statement);
+        checkState(
+            statement.equals(sqlParser.createStatement(formattedSql)),
+            "Formatted SQL is different than original");
+        return formattedSql;
+    }
 }

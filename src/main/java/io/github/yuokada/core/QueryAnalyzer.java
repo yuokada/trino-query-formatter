@@ -11,8 +11,8 @@ import io.trino.sql.tree.CreateTableAsSelect;
 import io.trino.sql.tree.Delete;
 import io.trino.sql.tree.DropCatalog;
 import io.trino.sql.tree.DropTable;
-import io.trino.sql.tree.Insert;
 import io.trino.sql.tree.FunctionCall;
+import io.trino.sql.tree.Insert;
 import io.trino.sql.tree.Join;
 import io.trino.sql.tree.Limit;
 import io.trino.sql.tree.Node;
@@ -93,7 +93,8 @@ public final class QueryAnalyzer {
     /**
      * Performs analysis with optional default catalog/schema for name resolution.
      */
-    public static QueryAnalysisResult analyze(String sql, String defaultCatalog, String defaultSchema) {
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
+        String defaultSchema) {
         QueryAnalysisResult.Builder b = new QueryAnalysisResult.Builder();
         try {
             Statement statement = sqlParser.createStatement(sql);
@@ -324,12 +325,9 @@ public final class QueryAnalyzer {
     }
 
 
-
-
-
-
     /**
      * Detects the query type of a given SQL query.
+     *
      * @param sql The SQL query.
      * @return The query type.
      */
