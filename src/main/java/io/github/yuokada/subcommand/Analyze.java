@@ -32,14 +32,34 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
     @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
     private String sqlFile;
 
+    /**
+     * Output format. Supported: text, json.
+     */
+    @CommandLine.Option(names = {"--format"}, defaultValue = "text", description = "Output format: text|json")
+    String format;
+
+    /**
+     * When true, also prints the AST of each statement.
+     */
+    @CommandLine.Option(names = {"--show-ast"}, defaultValue = "false", description = "Show AST for each statement")
+    boolean showAst;
+
   @Override
   public Integer call() throws IOException {
     if (!sqlFile.isEmpty()) {
       String sql = readFromFile(sqlFile);
       StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
       for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-        Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
-        printResult(catalogs);
+        if (isJsonFormat()) {
+          var result = QueryAnalyzer.analyze(split.statement());
+          printJsonWithOptionalAst(result, split.statement());
+        } else {
+          Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
+          printResult(catalogs);
+          if (showAst) {
+            printAst(split.statement());
+          }
+        }
       }
     } else {
       Integer queryCounter = 0;
@@ -51,8 +71,16 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
           StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
           for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
             queryCounter++;
-            Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
-            printResult(catalogs, queryCounter);
+            if (isJsonFormat()) {
+              var result = QueryAnalyzer.analyze(split.statement());
+              printJsonWithOptionalAst(result, split.statement());
+            } else {
+              Set<String> catalogs = QueryAnalyzer.collectCatalogs(split.statement());
+              printResult(catalogs, queryCounter);
+              if (showAst) {
+                printAst(split.statement());
+              }
+            }
           }
           // Replace buffer with trailing partial statement
           buffer = new StringBuilder();
@@ -64,8 +92,16 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
         String sql = buffer.toString();
         if (!sql.isEmpty()) {
           queryCounter++;
-          Set<String> catalogs = QueryAnalyzer.collectCatalogs(sql);
-          printResult(catalogs, queryCounter);
+          if (isJsonFormat()) {
+            var result = QueryAnalyzer.analyze(sql);
+            printJsonWithOptionalAst(result, sql);
+          } else {
+            Set<String> catalogs = QueryAnalyzer.collectCatalogs(sql);
+            printResult(catalogs, queryCounter);
+            if (showAst) {
+              printAst(sql);
+            }
+          }
         }
       }
     }
@@ -96,5 +132,50 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
   private static String analyze(String sql) {
     Expression expression = sqlParser.createExpression(sql);
     return expression.toString();
+  }
+
+  /**
+   * Prints analysis in JSON format (one object per statement).
+   */
+  private void printJson(io.github.yuokada.core.QueryAnalysisResult result) {
+    // For JSON output, avoid printing the header separator to keep it machine-readable
+    System.out.println(result.toJson());
+  }
+
+  /**
+   * Prints JSON analysis and optionally includes the AST.
+   * When --show-ast is enabled, embeds the AST as a field in the same JSON object.
+   */
+  private void printJsonWithOptionalAst(io.github.yuokada.core.QueryAnalysisResult result, String sql) {
+    if (!showAst) {
+      printJson(result);
+      return;
+    }
+    String ast = io.github.yuokada.core.QueryAnalyzer.dumpAst(sql).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\"", "\\\"");
+    String json = result.toJson();
+    // Merge: {"ast":"...", <rest of fields from result>}
+    if (json.startsWith("{")) {
+      String body = json.substring(1); // remove leading '{'
+      System.out.println("{\"ast\":\"" + ast + "\"," + body);
+    } else {
+      // Fallback: print two separate objects
+      System.out.println("{\"ast\":\"" + ast + "\"}");
+      System.out.println(json);
+    }
+  }
+
+  /**
+   * Prints AST in text mode.
+   */
+  private void printAst(String sql) {
+    System.out.println("AST:");
+    System.out.println(io.github.yuokada.core.QueryAnalyzer.dumpAst(sql));
+  }
+
+  /**
+   * Checks if the selected output format is JSON.
+   */
+  private boolean isJsonFormat() {
+    return "json".equalsIgnoreCase(format);
   }
 }
