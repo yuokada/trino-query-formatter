@@ -61,10 +61,14 @@ public final class OutputEmitter implements AutoCloseable {
 
     /**
      * Flushes the internal buffer to the output file when in file mode.
+     * This method is idempotent and can be called multiple times safely.
      *
      * @throws IOException when write fails.
      */
     public void close() throws IOException {
+        if (closed) {
+            return; // Already closed, nothing to do
+        }
         if (writer != null) {
             writer.flush();
             writer.close();
