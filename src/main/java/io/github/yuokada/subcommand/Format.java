@@ -21,7 +21,7 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "format", description = "Format SQL query")
-public class Format implements Callable<Integer>, SubCommandUtil {
+public class Format implements Callable<Integer> {
 
     /**
      * The parent command.

@@ -22,7 +22,7 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
-public class Analyze implements Callable<Integer>, SubCommandUtil {
+public class Analyze implements Callable<Integer> {
 
     /**
      * The parent command.
@@ -84,13 +84,6 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
      */
     @CommandLine.Option(names = {"--schema"}, description = "Default schema for unqualified names")
     String defaultSchema;
-
-    /**
-     * When true, stop on first parse error and return non-zero.
-     */
-    @CommandLine.Option(names = {
-        "--fail-fast"}, defaultValue = "false", description = "Stop on first parse error and return non-zero exit code")
-    boolean failFast;
 
     /**
      * Maximum characters for embedded AST (JSON).
