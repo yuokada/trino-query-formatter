@@ -1,14 +1,18 @@
 package io.github.yuokada.subcommand.output;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
-import io.github.yuokada.core.util.JsonUtil;
 import java.io.IOException;
 
 /**
  * JSON (NDJSON) printer supporting basic and full detail levels and optional AST embedding.
  */
 public final class JsonAnalysisPrinter implements AnalysisPrinter {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final OutputEmitter emitter;
     private final boolean basicDetails;
@@ -33,16 +37,12 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         throws IOException {
         String json;
         if (basicDetails) {
-            String ast = showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
+            String ast = showAst ? limitAst(QueryAnalyzer.dumpAst(originalSql)) : null;
             json = buildBasicJson(result, ast);
         } else {
             json = result.toJson();
             if (showAst) {
-                String ast = JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql)));
-                if (json.startsWith("{")) {
-                    String body = json.substring(1);
-                    json = "{\"ast\":\"" + ast + "\"," + body;
-                }
+                json = addAstToJson(json, limitAst(QueryAnalyzer.dumpAst(originalSql)));
             }
         }
         emitter.emit(json);
@@ -54,26 +54,33 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
     }
 
     private static String buildBasicJson(QueryAnalysisResult r, String astOrNull) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        if (astOrNull != null) {
-            sb.append("\"ast\":\"").append(astOrNull).append("\",");
-        }
-        sb.append("\"queryType\":\"")
-            .append(JsonUtil.escape(r.getQueryType()))
-            .append("\",");
-        sb.append("\"catalogs\":[");
-        boolean first = true;
-        for (String c : r.getCatalogs()) {
-            if (!first) {
-                sb.append(',');
+        try {
+            ObjectNode json = MAPPER.createObjectNode();
+            if (astOrNull != null) {
+                json.put("ast", astOrNull);
             }
-            sb.append("\"").append(JsonUtil.escape(c)).append("\"");
-            first = false;
+            json.put("queryType", r.getQueryType());
+            json.putPOJO("catalogs", new java.util.TreeSet<>(r.getCatalogs()));
+            if (r.getParseError() != null) {
+                json.put("parseError", r.getParseError());
+            }
+            return MAPPER.writeValueAsString(json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to build basic JSON", e);
         }
-        sb.append(']');
-        sb.append('}');
-        return sb.toString();
+    }
+
+    private static String addAstToJson(String json, String ast) {
+        try {
+            ObjectNode node = (ObjectNode) MAPPER.readTree(json);
+            // Insert AST as first field by creating a new node
+            ObjectNode newNode = MAPPER.createObjectNode();
+            newNode.put("ast", ast);
+            node.fields().forEachRemaining(entry -> newNode.set(entry.getKey(), entry.getValue()));
+            return MAPPER.writeValueAsString(newNode);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to add AST to JSON", e);
+        }
     }
 
     private String limitAst(String s) {

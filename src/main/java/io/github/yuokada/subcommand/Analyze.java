@@ -84,8 +84,39 @@ public class Analyze implements Callable<Integer> {
         "--ast-limit"}, defaultValue = "10000", description = "Maximum characters for embedded AST in JSON output")
     private int astLimit;
 
+    /**
+     * Package-private constructor for testing purposes.
+     * Creates an Analyze instance with specified configuration.
+     */
+    Analyze(String sqlFile,
+            String format,
+            boolean showAst,
+            String details,
+            String outputPath,
+            String defaultCatalog,
+            String defaultSchema,
+            int astLimit) {
+        this.sqlFile = sqlFile;
+        this.format = format;
+        this.showAst = showAst;
+        this.details = details;
+        this.outputPath = outputPath;
+        this.defaultCatalog = defaultCatalog;
+        this.defaultSchema = defaultSchema;
+        this.astLimit = astLimit;
+    }
+
+    /**
+     * Default constructor for Picocli.
+     */
+    public Analyze() {
+    }
+
     @Override
     public Integer call() throws IOException {
+        // Create OutputEmitter in try-with-resources for automatic cleanup.
+        // When outputPath is null, emitter writes to stdout without managing resources.
+        // When outputPath is specified, emitter manages the file resource.
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
              AnalysisPrinter printer = isJsonFormat()
                  ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
@@ -127,40 +158,5 @@ public class Analyze implements Callable<Integer> {
      */
     private boolean isFullDetails() {
         return "full".equalsIgnoreCase(details);
-    }
-
-    // Package-private setters to support testing without reflection.
-    // These methods should only be used in test code.
-
-    void setSqlFile(String sqlFile) {
-        this.sqlFile = sqlFile;
-    }
-
-    void setFormat(String format) {
-        this.format = format;
-    }
-
-    void setShowAst(boolean showAst) {
-        this.showAst = showAst;
-    }
-
-    void setDetails(String details) {
-        this.details = details;
-    }
-
-    void setOutputPath(String outputPath) {
-        this.outputPath = outputPath;
-    }
-
-    void setDefaultCatalog(String defaultCatalog) {
-        this.defaultCatalog = defaultCatalog;
-    }
-
-    void setDefaultSchema(String defaultSchema) {
-        this.defaultSchema = defaultSchema;
-    }
-
-    void setAstLimit(int astLimit) {
-        this.astLimit = astLimit;
     }
 }

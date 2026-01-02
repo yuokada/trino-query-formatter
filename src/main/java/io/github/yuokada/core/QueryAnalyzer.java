@@ -123,13 +123,21 @@ public final class QueryAnalyzer {
             collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs);
             return b.build();
         } catch (RuntimeException e) {
+            // Log full exception details before returning partial info
+            LOGGER.error("Failed to analyze SQL statement: " + sql, e);
             // Return partial info with parse error message
-            return b.queryType("Unknown").parseError(e.getMessage()).build();
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return b.queryType("Unknown").parseError(errorMsg).build();
         }
     }
 
     /**
      * Collects table and catalog references from the AST.
+     * 
+     * Note: Write targets (INSERT INTO, CREATE TABLE, etc.) are collected in both
+     * the tables set (via this method) and the writeTargets set (via collectExtendedDetails).
+     * This dual collection is intentional to provide both a complete list of all table
+     * references and a specific list of write operations.
      *
      * @param node           root AST node
      * @param tables         target set to gather fully qualified table names
@@ -308,6 +316,27 @@ public final class QueryAnalyzer {
             String joined = String.join(".",
                 qn.getOriginalParts().stream().map(Object::toString).toList());
             sb.append("[name=").append(joined).append("]");
+        } else if (node instanceof Update upd) {
+            Table table = upd.getTable();
+            QualifiedName qn = table.getName();
+            String joined = String.join(".",
+                qn.getOriginalParts().stream().map(Object::toString).toList());
+            sb.append("[table=").append(joined).append("]");
+        } else if (node instanceof Delete del) {
+            Table table = del.getTable();
+            QualifiedName qn = table.getName();
+            String joined = String.join(".",
+                qn.getOriginalParts().stream().map(Object::toString).toList());
+            sb.append("[table=").append(joined).append("]");
+        } else if (node instanceof DropTable dt) {
+            QualifiedName qn = dt.getTableName();
+            String joined = String.join(".",
+                qn.getOriginalParts().stream().map(Object::toString).toList());
+            sb.append("[table=").append(joined).append("]");
+        } else if (node instanceof FunctionCall fc) {
+            sb.append("[name=").append(fc.getName()).append("]");
+        } else if (node instanceof WithQuery wq) {
+            sb.append("[name=").append(wq.getName()).append("]");
         }
         sb.append('\n');
         for (Node child : node.getChildren()) {

@@ -37,10 +37,16 @@ class AnalyzeJsonFullExtendedTest {
         String sql = "INSERT INTO catalog1.s.out SELECT * FROM catalog1.s.src;";
         Files.writeString(sqlFile, sql);
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("json");
-        analyze.setDetails("full");
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            false,               // showAst
+            "full",              // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();

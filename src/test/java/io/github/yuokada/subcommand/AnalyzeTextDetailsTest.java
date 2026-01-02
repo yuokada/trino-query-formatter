@@ -36,10 +36,16 @@ class AnalyzeTextDetailsTest {
         String sql = "SELECT * FROM catalog1.s.t LIMIT 10; DELETE FROM catalog1.s.t WHERE id = 1;";
         Files.writeString(sqlFile, sql);
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("text");
-        analyze.setDetails("full");
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "text",              // format
+            false,               // showAst
+            "full",              // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString();

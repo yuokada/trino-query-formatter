@@ -42,9 +42,16 @@ class AnalyzeJsonAstTest {
         String sql = "SELECT 1; SELECT * FROM catalog1.s.t;";
         Files.writeString(sqlFile, sql);
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("json");
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            false,               // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -60,10 +67,16 @@ class AnalyzeJsonAstTest {
         String sql = "SELECT * FROM catalog1.s.t;";
         Files.writeString(sqlFile, sql);
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("json");
-        analyze.setShowAst(true);
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            true,                // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -77,10 +90,16 @@ class AnalyzeJsonAstTest {
         String sql = "SELECT * FROM catalog1.s.t;";
         System.setIn(new ByteArrayInputStream(sql.getBytes(StandardCharsets.UTF_8)));
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile("");
-        analyze.setFormat("text");
-        analyze.setShowAst(true);
+        Analyze analyze = new Analyze(
+            "",                  // sqlFile (empty for stdin)
+            "text",              // format
+            true,                // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -92,9 +111,16 @@ class AnalyzeJsonAstTest {
     void testStdInEmpty_noOutput() throws IOException {
         System.setIn(new ByteArrayInputStream(new byte[0]));
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile("");
-        analyze.setFormat("json");
+        Analyze analyze = new Analyze(
+            "",                  // sqlFile (empty for stdin)
+            "json",              // format
+            false,               // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -107,9 +133,16 @@ class AnalyzeJsonAstTest {
         String sql = "SELEC * FROM t;"; // invalid
         Files.writeString(sqlFile, sql);
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("json");
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            false,               // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -124,10 +157,16 @@ class AnalyzeJsonAstTest {
         Files.writeString(sqlFile, sql);
 
         // basic: only queryType and catalogs
-        Analyze analyzeBasic = new Analyze();
-        analyzeBasic.setSqlFile(sqlFile.toString());
-        analyzeBasic.setFormat("json");
-        analyzeBasic.setDetails("basic");
+        Analyze analyzeBasic = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            false,               // showAst
+            "basic",             // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         outContent.reset();
         analyzeBasic.call();
         String basicOut = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -137,10 +176,16 @@ class AnalyzeJsonAstTest {
         assertFalse(basicOut.contains("usesSelectStar"));
 
         // full: includes flags and tables
-        Analyze analyzeFull = new Analyze();
-        analyzeFull.setSqlFile(sqlFile.toString());
-        analyzeFull.setFormat("json");
-        analyzeFull.setDetails("full");
+        Analyze analyzeFull = new Analyze(
+            sqlFile.toString(),  // sqlFile
+            "json",              // format
+            false,               // showAst
+            "full",              // details
+            null,                // outputPath
+            null,                // defaultCatalog
+            null,                // defaultSchema
+            10000                // astLimit
+        );
         outContent.reset();
         analyzeFull.call();
         String fullOut = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -155,10 +200,16 @@ class AnalyzeJsonAstTest {
         Files.writeString(sqlFile, sql);
         Path outFile = tempDir.resolve("result.ndjson");
 
-        Analyze analyze = new Analyze();
-        analyze.setSqlFile(sqlFile.toString());
-        analyze.setFormat("json");
-        analyze.setOutputPath(outFile.toString());
+        Analyze analyze = new Analyze(
+            sqlFile.toString(),      // sqlFile
+            "json",                  // format
+            false,                   // showAst
+            "basic",                 // details
+            outFile.toString(),      // outputPath
+            null,                    // defaultCatalog
+            null,                    // defaultSchema
+            10000                    // astLimit
+        );
         outContent.reset();
         analyze.call();
         // stdout should be empty

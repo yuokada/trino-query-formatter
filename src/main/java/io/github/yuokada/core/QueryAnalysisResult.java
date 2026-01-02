@@ -1,6 +1,9 @@
 package io.github.yuokada.core;
 
-import io.github.yuokada.core.util.JsonUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -10,6 +13,9 @@ import java.util.Set;
  * Immutable result of analyzing a single SQL statement.
  */
 public final class QueryAnalysisResult {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+        .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
 
     /**
      * The detected query type (e.g., Query, Insert, Delete).
@@ -42,27 +48,27 @@ public final class QueryAnalysisResult {
     /**
      * CTE names defined in the statement.
      */
-    private final Set<String> ctes = new LinkedHashSet<>();
+    private final Set<String> ctes;
     /**
      * Join descriptors like "INNER:on", "LEFT:on", "CROSS:none".
      */
-    private final Set<String> joins = new LinkedHashSet<>();
+    private final Set<String> joins;
     /**
      * Scalar (non-aggregate, non-window) function names.
      */
-    private final Set<String> functionsScalar = new LinkedHashSet<>();
+    private final Set<String> functionsScalar;
     /**
      * Aggregate function names (heuristic).
      */
-    private final Set<String> functionsAggregate = new LinkedHashSet<>();
+    private final Set<String> functionsAggregate;
     /**
      * Window function names.
      */
-    private final Set<String> functionsWindow = new LinkedHashSet<>();
+    private final Set<String> functionsWindow;
     /**
      * Write target names such as INSERT/CREATE TABLE targets.
      */
-    private final Set<String> writeTargets = new LinkedHashSet<>();
+    private final Set<String> writeTargets;
 
     private QueryAnalysisResult(Builder b) {
         this.queryType = b.queryType;
@@ -72,12 +78,12 @@ public final class QueryAnalysisResult {
         this.hasLimit = b.hasLimit;
         this.hasWhereOnDelete = b.hasWhereOnDelete;
         this.parseError = b.parseError;
-        this.ctes.addAll(b.ctes);
-        this.joins.addAll(b.joins);
-        this.functionsScalar.addAll(b.functionsScalar);
-        this.functionsAggregate.addAll(b.functionsAggregate);
-        this.functionsWindow.addAll(b.functionsWindow);
-        this.writeTargets.addAll(b.writeTargets);
+        this.ctes = Collections.unmodifiableSet(new LinkedHashSet<>(b.ctes));
+        this.joins = Collections.unmodifiableSet(new LinkedHashSet<>(b.joins));
+        this.functionsScalar = Collections.unmodifiableSet(new LinkedHashSet<>(b.functionsScalar));
+        this.functionsAggregate = Collections.unmodifiableSet(new LinkedHashSet<>(b.functionsAggregate));
+        this.functionsWindow = Collections.unmodifiableSet(new LinkedHashSet<>(b.functionsWindow));
+        this.writeTargets = Collections.unmodifiableSet(new LinkedHashSet<>(b.writeTargets));
     }
 
     /**
@@ -133,103 +139,75 @@ public final class QueryAnalysisResult {
      * @return CTE names.
      */
     public Set<String> getCtes() {
-        return Collections.unmodifiableSet(ctes);
+        return ctes;
     }
 
     /**
      * @return Join descriptors.
      */
     public Set<String> getJoins() {
-        return Collections.unmodifiableSet(joins);
+        return joins;
     }
 
     /**
      * @return Scalar function names.
      */
     public Set<String> getFunctionsScalar() {
-        return Collections.unmodifiableSet(functionsScalar);
+        return functionsScalar;
     }
 
     /**
      * @return Aggregate function names.
      */
     public Set<String> getFunctionsAggregate() {
-        return Collections.unmodifiableSet(functionsAggregate);
+        return functionsAggregate;
     }
 
     /**
      * @return Window function names.
      */
     public Set<String> getFunctionsWindow() {
-        return Collections.unmodifiableSet(functionsWindow);
+        return functionsWindow;
     }
 
     /**
      * @return Write target names.
      */
     public Set<String> getWriteTargets() {
-        return Collections.unmodifiableSet(writeTargets);
+        return writeTargets;
     }
 
     /**
-     * Builds a compact JSON string representing this result.
+     * Builds a compact JSON string representing this result using Jackson.
      *
      * @return JSON representation
      */
     public String toJson() {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        appendField(sb, "queryType", queryType, true);
-        appendArray(sb, "catalogs", catalogs);
-        appendArray(sb, "tables", tables);
-        appendField(sb, "usesSelectStar", Boolean.toString(usesSelectStar), false);
-        appendArray(sb, "ctes", ctes);
-        appendArray(sb, "joins", joins);
-        appendArray(sb, "functionsScalar", functionsScalar);
-        appendArray(sb, "functionsAggregate", functionsAggregate);
-        appendArray(sb, "functionsWindow", functionsWindow);
-        appendArray(sb, "writeTargets", writeTargets);
-        if (hasLimit != null) {
-            appendField(sb, "hasLimit", Boolean.toString(hasLimit), false);
-        }
-        if (hasWhereOnDelete != null) {
-            appendField(sb, "hasWhereOnDelete", Boolean.toString(hasWhereOnDelete), false);
-        }
-        if (parseError != null) {
-            appendField(sb, "parseError", parseError, true);
-        }
-        // Remove trailing comma if present
-        if (sb.charAt(sb.length() - 1) == ',') {
-            sb.deleteCharAt(sb.length() - 1);
-        }
-        sb.append('}');
-        return sb.toString();
-    }
-
-    private static void appendArray(StringBuilder sb, String name, Set<String> values) {
-        sb.append('"').append(JsonUtil.escape(name)).append('"').append(':');
-        sb.append('[');
-        boolean first = true;
-        java.util.List<String> sorted = new java.util.ArrayList<>(values);
-        java.util.Collections.sort(sorted);
-        for (String v : sorted) {
-            if (!first) {
-                sb.append(',');
+        try {
+            ObjectNode json = MAPPER.createObjectNode();
+            json.put("queryType", queryType);
+            json.putPOJO("catalogs", new java.util.TreeSet<>(catalogs));
+            json.putPOJO("tables", new java.util.TreeSet<>(tables));
+            json.put("usesSelectStar", usesSelectStar);
+            json.putPOJO("ctes", new java.util.TreeSet<>(ctes));
+            json.putPOJO("joins", new java.util.TreeSet<>(joins));
+            json.putPOJO("functionsScalar", new java.util.TreeSet<>(functionsScalar));
+            json.putPOJO("functionsAggregate", new java.util.TreeSet<>(functionsAggregate));
+            json.putPOJO("functionsWindow", new java.util.TreeSet<>(functionsWindow));
+            json.putPOJO("writeTargets", new java.util.TreeSet<>(writeTargets));
+            if (hasLimit != null) {
+                json.put("hasLimit", hasLimit);
             }
-            sb.append('"').append(JsonUtil.escape(v)).append('"');
-            first = false;
+            if (hasWhereOnDelete != null) {
+                json.put("hasWhereOnDelete", hasWhereOnDelete);
+            }
+            if (parseError != null) {
+                json.put("parseError", parseError);
+            }
+            return MAPPER.writeValueAsString(json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize QueryAnalysisResult to JSON", e);
         }
-        sb.append(']').append(',');
-    }
-
-    private static void appendField(StringBuilder sb, String name, String value, boolean quote) {
-        sb.append('"').append(JsonUtil.escape(name)).append('"').append(':');
-        if (quote) {
-            sb.append('"').append(JsonUtil.escape(value)).append('"');
-        } else {
-            sb.append(value);
-        }
-        sb.append(',');
     }
 
     /**
