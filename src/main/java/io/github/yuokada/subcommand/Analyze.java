@@ -1,6 +1,5 @@
 package io.github.yuokada.subcommand;
 
-import com.google.common.collect.ImmutableSet;
 import io.github.yuokada.EntryCommand;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
@@ -8,13 +7,8 @@ import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
-import io.trino.cli.lexer.StatementSplitter;
-import java.io.BufferedReader;
+import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -100,53 +94,21 @@ public class Analyze implements Callable<Integer> {
             : new TextAnalysisPrinter(emitter, isFullDetails(), showAst);
 
         if (!sqlFile.isEmpty()) {
-            String sql = readFromFile(sqlFile);
-            StatementSplitter splitter = new StatementSplitter(sql, ImmutableSet.of(";", "\\G"));
-            for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-                QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(),
-                    defaultCatalog, defaultSchema);
-                printer.printStatement(result, null, split.statement());
-            }
+            SqlInput.forEachStatementFromFile(sqlFile, stmt -> {
+                QueryAnalysisResult result =
+                    QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
+                printer.printStatement(result, null, stmt);
+            });
         } else {
-            Integer queryCounter = 0;
-            try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-                StringBuilder buffer = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    buffer.append(line).append('\n');
-                    String sql = buffer.toString();
-                    StatementSplitter splitter = new StatementSplitter(sql,
-                        ImmutableSet.of(";", "\\G"));
-                    for (StatementSplitter.Statement split : splitter.getCompleteStatements()) {
-                        queryCounter++;
-                        QueryAnalysisResult result = QueryAnalyzer.analyze(split.statement(),
-                            defaultCatalog, defaultSchema);
-                        printer.printStatement(result, queryCounter, split.statement());
-                    }
-                    // Replace buffer with trailing partial statement
-                    buffer = new StringBuilder();
-                    String partial = splitter.getPartialStatement();
-                    if (!partial.isEmpty()) {
-                        buffer.append(partial).append('\n');
-                    }
-                }
-                String sql = buffer.toString();
-                if (!sql.isEmpty()) {
-                    queryCounter++;
-                    QueryAnalysisResult result = QueryAnalyzer.analyze(sql, defaultCatalog,
-                        defaultSchema);
-                    printer.printStatement(result, queryCounter, sql);
-                }
-            }
+            SqlInput.forEachStatementFromStdin((idx, stmt) -> {
+                QueryAnalysisResult result =
+                    QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
+                printer.printStatement(result, idx, stmt);
+            });
         }
 
         printer.close();
         return ExitCode.OK;
-    }
-
-    private String readFromFile(String path) throws IOException {
-        return Files.readString(Paths.get(path), StandardCharsets.UTF_8);
     }
 
     /**
