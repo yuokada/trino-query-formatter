@@ -140,8 +140,8 @@ public class Analyze implements Callable<Integer> {
         this.format = format;
     }
 
-    void setShowAst(boolean showAst) {
-        this.showAst = showAst;
+    void setShowAst() {
+        this.showAst = true;
     }
 
     void setDetails(String details) {

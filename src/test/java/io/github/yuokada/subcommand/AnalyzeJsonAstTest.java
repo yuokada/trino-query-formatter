@@ -63,7 +63,7 @@ class AnalyzeJsonAstTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sqlFile.toString());
         analyze.setFormat("json");
-        analyze.setShowAst(true);
+        analyze.setShowAst();
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -80,7 +80,7 @@ class AnalyzeJsonAstTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile("");
         analyze.setFormat("text");
-        analyze.setShowAst(true);
+        analyze.setShowAst();
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);

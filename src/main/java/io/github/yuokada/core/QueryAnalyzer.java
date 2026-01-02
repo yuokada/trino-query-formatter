@@ -316,9 +316,7 @@ public final class QueryAnalyzer {
     }
 
     private static void indent(StringBuilder sb, int depth) {
-        for (int i = 0; i < depth; i++) {
-            sb.append("  ");
-        }
+        sb.append("  ".repeat(Math.max(0, depth)));
     }
 
     /**
