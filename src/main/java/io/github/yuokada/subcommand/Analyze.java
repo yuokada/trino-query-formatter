@@ -129,7 +129,8 @@ public class Analyze implements Callable<Integer> {
         return "full".equalsIgnoreCase(details);
     }
 
-    // Package-private setters for testing
+    // Package-private setters to support testing without reflection.
+    // These methods should only be used in test code.
 
     void setSqlFile(String sqlFile) {
         this.sqlFile = sqlFile;

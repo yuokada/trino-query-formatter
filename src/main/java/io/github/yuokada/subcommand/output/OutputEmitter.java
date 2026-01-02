@@ -44,7 +44,7 @@ public final class OutputEmitter implements AutoCloseable {
      * @throws IllegalStateException if called after close().
      */
     public void emit(String line) {
-        if (closed && outPath != null) {
+        if (closed) {
             throw new IllegalStateException("Cannot emit after OutputEmitter has been closed");
         }
         if (writer != null) {
