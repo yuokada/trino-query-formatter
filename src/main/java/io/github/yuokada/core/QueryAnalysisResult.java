@@ -209,7 +209,9 @@ public final class QueryAnalysisResult {
         sb.append('"').append(escape(name)).append('"').append(':');
         sb.append('[');
         boolean first = true;
-        for (String v : values) {
+        java.util.List<String> sorted = new java.util.ArrayList<>(values);
+        java.util.Collections.sort(sorted);
+        for (String v : sorted) {
             if (!first) {
                 sb.append(',');
             }

@@ -44,7 +44,7 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
             emitter.emit("No catalogs found.");
             return;
         }
-        String cats = String.join(",", catalogs);
+        String cats = String.join(",", catalogs.stream().sorted().toList());
         if (queryId != null) {
             emitter.emit(String.format("Catalogs of Query No %d: [%s]", queryId, cats));
         } else {
@@ -55,13 +55,13 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
     private void printFull(QueryAnalysisResult r, Integer queryId) {
         printBasic(r.getCatalogs(), queryId);
         emitter.emit(String.format("QueryType: %s", r.getQueryType()));
-        String tables = String.join(",", r.getTables());
+        String tables = String.join(",", r.getTables().stream().sorted().toList());
         emitter.emit(String.format("Tables: [%s]", tables));
         String ctes = String.join(",", r.getCtes());
         if (!ctes.isEmpty()) {
             emitter.emit(String.format("CTEs: [%s]", ctes));
         }
-        String joins = String.join(",", r.getJoins());
+        String joins = String.join(",", r.getJoins().stream().sorted().toList());
         if (!joins.isEmpty()) {
             emitter.emit(String.format("Joins: [%s]", joins));
         }
@@ -76,14 +76,15 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
             || !r.getFunctionsWindow().isEmpty()) {
             emitter.emit(String.format(
                 "Functions: scalar=[%s], aggregate=[%s], window=[%s]",
-                String.join(",", r.getFunctionsScalar()),
-                String.join(",", r.getFunctionsAggregate()),
-                String.join(",", r.getFunctionsWindow())
+                String.join(",", r.getFunctionsScalar().stream().sorted().toList()),
+                String.join(",", r.getFunctionsAggregate().stream().sorted().toList()),
+                String.join(",", r.getFunctionsWindow().stream().sorted().toList())
             ));
         }
         if (!r.getWriteTargets().isEmpty()) {
             emitter.emit(
-                String.format("WriteTargets: [%s]", String.join(",", r.getWriteTargets())));
+                String.format("WriteTargets: [%s]",
+                    String.join(",", r.getWriteTargets().stream().sorted().toList())));
         }
         if (r.getParseError() != null) {
             emitter.emit(String.format("ParseError: %s", r.getParseError()));

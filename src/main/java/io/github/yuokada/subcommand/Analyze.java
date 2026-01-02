@@ -84,11 +84,25 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
     @CommandLine.Option(names = {"--schema"}, description = "Default schema for unqualified names")
     String defaultSchema;
 
+    /**
+     * When true, stop on first parse error and return non-zero.
+     */
+    @CommandLine.Option(names = {
+        "--fail-fast"}, defaultValue = "false", description = "Stop on first parse error and return non-zero exit code")
+    boolean failFast;
+
+    /**
+     * Maximum characters for embedded AST (JSON).
+     */
+    @CommandLine.Option(names = {
+        "--ast-limit"}, defaultValue = "10000", description = "Maximum characters for embedded AST in JSON output")
+    int astLimit;
+
     @Override
     public Integer call() throws IOException {
         OutputEmitter emitter = new OutputEmitter(outputPath);
         AnalysisPrinter printer = isJsonFormat()
-            ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst)
+            ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
             : new TextAnalysisPrinter(emitter, isFullDetails(), showAst);
 
         if (!sqlFile.isEmpty()) {

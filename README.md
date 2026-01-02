@@ -22,6 +22,8 @@ This project provides Picocli commands to format and analyze SQL.
 
 - Analyze with JSON and embed AST:
   - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --show-ast src/main/resources/queries/sample.sql'`
+  - Limit embedded AST size (chars):
+    - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --show-ast --ast-limit 2000 src/main/resources/queries/sample.sql'`
 
 - Analyze from STDIN:
   - `cat src/main/resources/queries/sample.sql | ./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json'`
@@ -33,6 +35,8 @@ This project provides Picocli commands to format and analyze SQL.
   - Text: `full` prints extended lines (QueryType/Tables/Flags). `basic` keeps legacy output
 - Write output to file: `--output <path>`
   - Writes the entire output to the specified file. Stdout remains empty when `--output` is used.
+  - Output is written incrementally to the file (streaming) to reduce memory usage.
+  - Arrays in text/JSON outputs are sorted for stable diffs.
 
 ### Catalog/Schema defaults
 
@@ -44,6 +48,11 @@ This project provides Picocli commands to format and analyze SQL.
   - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --details full --catalog c1 "SELECT * FROM s.t"'`
   - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --details full --catalog c1 --schema s1 "SELECT * FROM t"'`
   - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --details full --catalog c1 --schema s1 src/main/resources/queries/sample.sql'`
+
+
+## Roadmap (Next Small Tasks)
+
+- Schema reporting: add `schemas` in details=full.
 
 
 ## Packaging and running the application

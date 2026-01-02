@@ -1,6 +1,8 @@
 package io.github.yuokada.subcommand.output;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -9,8 +11,9 @@ import java.nio.file.Path;
  */
 public final class OutputEmitter {
 
-    private final StringBuilder buffer;
+    private final StringBuilder buffer; // kept for stdout mode (null when using writer)
     private final Path outPath;
+    private BufferedWriter writer; // non-null when writing to file incrementally
 
     /**
      * Creates a new emitter.
@@ -23,7 +26,13 @@ public final class OutputEmitter {
             this.buffer = null;
         } else {
             this.outPath = Path.of(outputPath);
-            this.buffer = new StringBuilder();
+            this.buffer = null;
+            try {
+                Files.createDirectories(this.outPath.getParent());
+                this.writer = Files.newBufferedWriter(this.outPath, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -33,10 +42,15 @@ public final class OutputEmitter {
      * @param line The line to emit.
      */
     public void emit(String line) {
-        if (buffer == null) {
-            System.out.println(line);
+        if (writer != null) {
+            try {
+                writer.write(line);
+                writer.newLine();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         } else {
-            buffer.append(line).append(System.lineSeparator());
+            System.out.println(line);
         }
     }
 
@@ -46,9 +60,10 @@ public final class OutputEmitter {
      * @throws IOException when write fails.
      */
     public void close() throws IOException {
-        if (buffer != null && outPath != null) {
-            Files.writeString(outPath, buffer.toString());
+        if (writer != null) {
+            writer.flush();
+            writer.close();
+            writer = null;
         }
     }
 }
-

@@ -85,6 +85,9 @@ public final class QueryAnalyzer {
     /**
      * Performs a basic analysis for a single SQL statement.
      * Focuses on query type, catalogs, tables and simple flags.
+     *
+     * @param sql SQL statement text
+     * @return analysis result for the statement
      */
     public static QueryAnalysisResult analyze(String sql) {
         return analyze(sql, null, null);
@@ -92,6 +95,11 @@ public final class QueryAnalyzer {
 
     /**
      * Performs analysis with optional default catalog/schema for name resolution.
+     *
+     * @param sql            SQL statement text
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
+     * @return analysis result for the statement
      */
     public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
         String defaultSchema) {
@@ -122,6 +130,12 @@ public final class QueryAnalyzer {
 
     /**
      * Collects table and catalog references from the AST.
+     *
+     * @param node           root AST node
+     * @param tables         target set to gather fully qualified table names
+     * @param catalogs       target set to gather catalog names
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
      */
     private static void collectTablesAndCatalogs(Node node, Set<String> tables,
         Set<String> catalogs, String defaultCatalog, String defaultSchema) {
@@ -153,6 +167,12 @@ public final class QueryAnalyzer {
 
     /**
      * Collects extended information: CTE names, join descriptors, function usage and write targets.
+     *
+     * @param node           root AST node
+     * @param b              result builder to receive findings
+     * @param defaultCatalog default catalog (nullable)
+     * @param defaultSchema  default schema (nullable)
+     * @param catalogs       collected catalog names (for updates during resolution)
      */
     private static void collectExtendedDetails(Node node, QueryAnalysisResult.Builder b,
         String defaultCatalog, String defaultSchema, java.util.Set<String> catalogs) {
@@ -194,6 +214,12 @@ public final class QueryAnalyzer {
         }
     }
 
+    /**
+     * Checks if a function name is a common aggregate function.
+     *
+     * @param lower function name in lower case
+     * @return true when name is a known aggregate
+     */
     private static boolean isAggregateName(String lower) {
         return lower.equals("count") || lower.equals("sum") || lower.equals("avg")
             || lower.equals("min") || lower.equals("max") || lower.equals("array_agg")

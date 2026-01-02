@@ -9,21 +9,22 @@ import java.io.IOException;
  */
 public final class JsonAnalysisPrinter implements AnalysisPrinter {
 
-    private static final int MAX_AST_CHARS = 10_000;
-
     private final OutputEmitter emitter;
     private final boolean basicDetails;
     private final boolean showAst;
+    private final int astLimit;
 
     /**
      * @param emitter      Output sink.
      * @param basicDetails When true, only emits queryType and catalogs.
      * @param showAst      When true, embeds AST as an additional field.
      */
-    public JsonAnalysisPrinter(OutputEmitter emitter, boolean basicDetails, boolean showAst) {
+    public JsonAnalysisPrinter(OutputEmitter emitter, boolean basicDetails, boolean showAst,
+        int astLimit) {
         this.emitter = emitter;
         this.basicDetails = basicDetails;
         this.showAst = showAst;
+        this.astLimit = astLimit;
     }
 
     @Override
@@ -74,14 +75,14 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         return sb.toString();
     }
 
-    private static String limitAst(String s) {
+    private String limitAst(String s) {
         if (s == null) {
             return "";
         }
-        if (s.length() <= MAX_AST_CHARS) {
+        if (s.length() <= astLimit) {
             return s;
         }
-        return s.substring(0, MAX_AST_CHARS) + "\n... (truncated)";
+        return s.substring(0, astLimit) + "\n... (truncated)";
     }
 
     private static String escapeJsonString(String s) {
@@ -115,4 +116,3 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         return out.toString();
     }
 }
-
