@@ -27,19 +27,37 @@ public final class SqlInput {
 
     /**
      * A consumer that can throw IOException.
+     *
+     * @param <T> The type of the input to the operation.
      */
     @FunctionalInterface
     public interface IoConsumer<T> {
 
+        /**
+         * Performs this operation on the given argument.
+         *
+         * @param value the input argument
+         * @throws IOException if an I/O error occurs
+         */
         void accept(T value) throws IOException;
     }
 
     /**
      * A bi-consumer that can throw IOException.
+     *
+     * @param <T> The type of the first argument to the operation.
+     * @param <U> The type of the second argument to the operation.
      */
     @FunctionalInterface
     public interface IoBiConsumer<T, U> {
 
+        /**
+         * Performs this operation on the given arguments.
+         *
+         * @param t the first input argument
+         * @param u the second input argument
+         * @throws IOException if an I/O error occurs
+         */
         void accept(T t, U u) throws IOException;
     }
 

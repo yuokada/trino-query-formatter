@@ -10,8 +10,19 @@ import java.util.Set;
  */
 public final class TextAnalysisPrinter implements AnalysisPrinter {
 
+    /**
+     * Output sink for emitting formatted results.
+     */
     private final OutputEmitter emitter;
+
+    /**
+     * When true, prints extended info such as tables and flags.
+     */
     private final boolean fullDetails;
+
+    /**
+     * When true, also prints AST after each statement.
+     */
     private final boolean showAst;
 
     /**
