@@ -2,6 +2,7 @@ package io.github.yuokada.subcommand.output;
 
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
+import io.github.yuokada.core.util.JsonUtil;
 import java.io.IOException;
 
 /**
@@ -31,13 +32,12 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
     public void printStatement(QueryAnalysisResult result, Integer queryId, String originalSql) {
         String json;
         if (basicDetails) {
-            String ast =
-                showAst ? escapeJsonString(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
+            String ast = showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
             json = buildBasicJson(result, ast);
         } else {
             json = result.toJson();
             if (showAst) {
-                String ast = escapeJsonString(limitAst(QueryAnalyzer.dumpAst(originalSql)));
+                String ast = JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql)));
                 if (json.startsWith("{")) {
                     String body = json.substring(1);
                     json = "{\"ast\":\"" + ast + "\"," + body;
@@ -59,7 +59,7 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
             sb.append("\"ast\":\"").append(astOrNull).append("\",");
         }
         sb.append("\"queryType\":\"")
-            .append(escapeJsonString(r.getQueryType()))
+            .append(JsonUtil.escape(r.getQueryType()))
             .append("\",");
         sb.append("\"catalogs\":[");
         boolean first = true;
@@ -67,7 +67,7 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
             if (!first) {
                 sb.append(',');
             }
-            sb.append("\"").append(escapeJsonString(c)).append("\"");
+            sb.append("\"").append(JsonUtil.escape(c)).append("\"");
             first = false;
         }
         sb.append(']');
@@ -85,34 +85,4 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         return s.substring(0, astLimit) + "\n... (truncated)";
     }
 
-    private static String escapeJsonString(String s) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"':
-                    out.append("\\\"");
-                    break;
-                case '\\':
-                    out.append("\\\\");
-                    break;
-                case '\n':
-                    out.append("\\n");
-                    break;
-                case '\r':
-                    out.append("\\r");
-                    break;
-                case '\t':
-                    out.append("\\t");
-                    break;
-                default:
-                    if (c < 0x20) {
-                        out.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        out.append(c);
-                    }
-            }
-        }
-        return out.toString();
-    }
 }

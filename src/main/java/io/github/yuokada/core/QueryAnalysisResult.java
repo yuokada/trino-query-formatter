@@ -1,5 +1,6 @@
 package io.github.yuokada.core;
 
+import io.github.yuokada.core.util.JsonUtil;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -206,7 +207,7 @@ public final class QueryAnalysisResult {
     }
 
     private static void appendArray(StringBuilder sb, String name, Set<String> values) {
-        sb.append('"').append(escape(name)).append('"').append(':');
+        sb.append('"').append(JsonUtil.escape(name)).append('"').append(':');
         sb.append('[');
         boolean first = true;
         java.util.List<String> sorted = new java.util.ArrayList<>(values);
@@ -215,51 +216,20 @@ public final class QueryAnalysisResult {
             if (!first) {
                 sb.append(',');
             }
-            sb.append('"').append(escape(v)).append('"');
+            sb.append('"').append(JsonUtil.escape(v)).append('"');
             first = false;
         }
         sb.append(']').append(',');
     }
 
     private static void appendField(StringBuilder sb, String name, String value, boolean quote) {
-        sb.append('"').append(escape(name)).append('"').append(':');
+        sb.append('"').append(JsonUtil.escape(name)).append('"').append(':');
         if (quote) {
-            sb.append('"').append(escape(value)).append('"');
+            sb.append('"').append(JsonUtil.escape(value)).append('"');
         } else {
             sb.append(value);
         }
         sb.append(',');
-    }
-
-    private static String escape(String s) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"':
-                    out.append("\\\"");
-                    break;
-                case '\\':
-                    out.append("\\\\");
-                    break;
-                case '\n':
-                    out.append("\\n");
-                    break;
-                case '\r':
-                    out.append("\\r");
-                    break;
-                case '\t':
-                    out.append("\\t");
-                    break;
-                default:
-                    if (c < 0x20) {
-                        out.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        out.append(c);
-                    }
-            }
-        }
-        return out.toString();
     }
 
     /**
