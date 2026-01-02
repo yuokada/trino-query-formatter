@@ -11,8 +11,19 @@ import java.nio.file.Path;
  */
 public final class OutputEmitter implements AutoCloseable {
 
+    /**
+     * Target file path; null indicates stdout mode.
+     */
     private final Path outPath;
+
+    /**
+     * Buffered writer for file output; non-null when writing to file incrementally.
+     */
     private BufferedWriter writer; // non-null when writing to file incrementally
+
+    /**
+     * Flag indicating whether this emitter has been closed.
+     */
     private boolean closed = false;
 
     /**

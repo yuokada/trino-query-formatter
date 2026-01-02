@@ -228,6 +228,10 @@ public final class QueryAnalyzer {
 
     /**
      * Checks if the given AST contains a node of the specified type.
+     *
+     * @param node  The AST node to search within.
+     * @param clazz The type of node to search for.
+     * @return true if a node of the specified type is found, false otherwise.
      */
     private static boolean containsNode(Node node, Class<? extends Node> clazz) {
         if (clazz.isInstance(node)) {
@@ -322,6 +326,12 @@ public final class QueryAnalyzer {
     /**
      * Resolves a QualifiedName into a fully qualified name string, applying defaults when provided.
      * Also updates the given catalogs set when a catalog can be determined.
+     *
+     * @param qn             The qualified name to resolve.
+     * @param defaultCatalog The default catalog to use when not specified.
+     * @param defaultSchema  The default schema to use when not specified.
+     * @param catalogs       Set of catalogs to be updated with detected catalog names.
+     * @return The fully qualified name string.
      */
     private static String resolveName(QualifiedName qn, String defaultCatalog, String defaultSchema,
         java.util.Set<String> catalogs) {

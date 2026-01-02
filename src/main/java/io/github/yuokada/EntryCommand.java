@@ -22,6 +22,9 @@ import picocli.CommandLine.ExitCode;
     description = "Tool to format SQL queries for Trino.")
 public class EntryCommand implements Callable<Integer> {
 
+    /**
+     * Logger instance for this class.
+     */
     private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
 
     /**
@@ -42,6 +45,12 @@ public class EntryCommand implements Callable<Integer> {
         description = "show this help message and exit")
     private boolean help;
 
+    /**
+     * Main entry point for the command-line application.
+     *
+     * @param args Command-line arguments.
+     * @throws IOException If an I/O error occurs.
+     */
     public static void main(String[] args) throws IOException {
         int exitCode = new CommandLine(new EntryCommand()).execute(args);
         System.exit(exitCode);

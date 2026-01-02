@@ -8,6 +8,9 @@ import com.fasterxml.jackson.core.io.JsonStringEncoder;
  */
 public final class JsonUtil {
 
+    /**
+     * Shared singleton instance of JsonStringEncoder for efficient reuse.
+     */
     private static final JsonStringEncoder ENCODER = JsonStringEncoder.getInstance();
 
     /**

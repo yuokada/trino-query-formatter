@@ -110,6 +110,8 @@ public class Analyze implements Callable<Integer> {
 
     /**
      * Checks if the selected output format is JSON.
+     *
+     * @return true if JSON format is selected, false otherwise.
      */
     private boolean isJsonFormat() {
         return "json".equalsIgnoreCase(format);
@@ -117,6 +119,8 @@ public class Analyze implements Callable<Integer> {
 
     /**
      * Returns true when --details=basic is selected.
+     *
+     * @return true if basic details mode is selected, false otherwise.
      */
     private boolean isBasicDetails() {
         return "basic".equalsIgnoreCase(details);
@@ -124,6 +128,8 @@ public class Analyze implements Callable<Integer> {
 
     /**
      * Returns true when --details=full is selected.
+     *
+     * @return true if full details mode is selected, false otherwise.
      */
     private boolean isFullDetails() {
         return "full".equalsIgnoreCase(details);

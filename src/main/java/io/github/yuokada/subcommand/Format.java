@@ -22,6 +22,10 @@ public class Format implements Callable<Integer> {
      */
     @ParentCommand
     private EntryCommand entryCommand;
+
+    /**
+     * SQL parser instance used for parsing and formatting.
+     */
     private static final SqlParser sqlParser = new SqlParser();
 
     /**
