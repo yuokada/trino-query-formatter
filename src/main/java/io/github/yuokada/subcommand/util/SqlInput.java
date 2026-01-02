@@ -30,6 +30,7 @@ public final class SqlInput {
      */
     @FunctionalInterface
     public interface IoConsumer<T> {
+
         void accept(T value) throws IOException;
     }
 
@@ -38,6 +39,7 @@ public final class SqlInput {
      */
     @FunctionalInterface
     public interface IoBiConsumer<T, U> {
+
         void accept(T t, U u) throws IOException;
     }
 

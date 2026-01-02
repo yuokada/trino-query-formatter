@@ -8,27 +8,27 @@ import com.fasterxml.jackson.core.io.JsonStringEncoder;
  */
 public final class JsonUtil {
 
-  private static final JsonStringEncoder ENCODER = JsonStringEncoder.getInstance();
+    private static final JsonStringEncoder ENCODER = JsonStringEncoder.getInstance();
 
-  /**
-   * Private constructor to prevent instantiation of this utility class.
-   */
-  private JsonUtil() {
-  }
-
-  /**
-   * Escapes a Java string for JSON string literal context using Jackson's JsonStringEncoder.
-   * Converts control characters and quotes/backslashes to their escaped forms.
-   *
-   * @param s input string (nullable)
-   * @return escaped string (never null)
-   */
-  public static String escape(String s) {
-    if (s == null) {
-      return "";
+    /**
+     * Private constructor to prevent instantiation of this utility class.
+     */
+    private JsonUtil() {
     }
-    char[] escaped = ENCODER.quoteAsString(s);
-    return String.valueOf(escaped);
-  }
+
+    /**
+     * Escapes a Java string for JSON string literal context using Jackson's JsonStringEncoder.
+     * Converts control characters and quotes/backslashes to their escaped forms.
+     *
+     * @param s input string (nullable)
+     * @return escaped string (never null)
+     */
+    public static String escape(String s) {
+        if (s == null) {
+            return "";
+        }
+        char[] escaped = ENCODER.quoteAsString(s);
+        return String.valueOf(escaped);
+    }
 }
 

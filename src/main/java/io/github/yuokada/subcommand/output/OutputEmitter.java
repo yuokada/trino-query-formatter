@@ -39,7 +39,7 @@ public final class OutputEmitter implements AutoCloseable {
      *
      * @param line The line to emit.
      * @throws IllegalStateException if called after close().
-     * @throws IOException if writing to file fails.
+     * @throws IOException           if writing to file fails.
      */
     public void emit(String line) throws IOException {
         if (closed) {

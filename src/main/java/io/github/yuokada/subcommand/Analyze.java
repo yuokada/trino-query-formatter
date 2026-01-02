@@ -87,9 +87,9 @@ public class Analyze implements Callable<Integer> {
     @Override
     public Integer call() throws IOException {
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
-             AnalysisPrinter printer = isJsonFormat()
-                 ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
-                 : new TextAnalysisPrinter(emitter, isFullDetails(), showAst)) {
+            AnalysisPrinter printer = isJsonFormat()
+                ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
+                : new TextAnalysisPrinter(emitter, isFullDetails(), showAst)) {
 
             if (!sqlFile.isEmpty()) {
                 SqlInput.forEachStatementFromFile(sqlFile, stmt -> {

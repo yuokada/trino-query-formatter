@@ -24,7 +24,6 @@ public interface AnalysisPrinter extends AutoCloseable {
      *
      * @throws IOException when writing fails.
      */
-    @Override
     void close() throws IOException;
 }
 

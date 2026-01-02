@@ -33,7 +33,8 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         throws IOException {
         String json;
         if (basicDetails) {
-            String ast = showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
+            String ast =
+                showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
             json = buildBasicJson(result, ast);
         } else {
             json = result.toJson();
