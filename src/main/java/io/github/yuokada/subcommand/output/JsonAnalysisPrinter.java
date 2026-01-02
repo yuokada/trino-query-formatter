@@ -29,7 +29,8 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
     }
 
     @Override
-    public void printStatement(QueryAnalysisResult result, Integer queryId, String originalSql) {
+    public void printStatement(QueryAnalysisResult result, Integer queryId, String originalSql)
+        throws IOException {
         String json;
         if (basicDetails) {
             String ast = showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
