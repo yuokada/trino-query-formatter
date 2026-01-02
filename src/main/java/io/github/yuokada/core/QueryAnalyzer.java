@@ -366,7 +366,6 @@ public final class QueryAnalyzer {
         return table;
     }
 
-
     /**
      * Detects the query type of a given SQL query.
      *

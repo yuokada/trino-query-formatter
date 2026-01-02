@@ -26,7 +26,8 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
     }
 
     @Override
-    public void printStatement(QueryAnalysisResult result, Integer queryId, String originalSql) {
+    public void printStatement(QueryAnalysisResult result, Integer queryId, String originalSql)
+        throws IOException {
         emitter.emit("=========================");
         if (fullDetails) {
             printFull(result, queryId);
@@ -39,7 +40,7 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
         }
     }
 
-    private void printBasic(Set<String> catalogs, Integer queryId) {
+    private void printBasic(Set<String> catalogs, Integer queryId) throws IOException {
         if (catalogs.isEmpty()) {
             emitter.emit("No catalogs found.");
             return;
@@ -52,7 +53,7 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
         }
     }
 
-    private void printFull(QueryAnalysisResult r, Integer queryId) {
+    private void printFull(QueryAnalysisResult r, Integer queryId) throws IOException {
         printBasic(r.getCatalogs(), queryId);
         emitter.emit(String.format("QueryType: %s", r.getQueryType()));
         String tables = String.join(",", r.getTables().stream().sorted().toList());

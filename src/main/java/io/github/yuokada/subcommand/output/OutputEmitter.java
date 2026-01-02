@@ -19,21 +19,18 @@ public final class OutputEmitter implements AutoCloseable {
      * Creates a new emitter.
      *
      * @param outputPath The path to write to; when null or empty, writes to stdout.
+     * @throws IOException if file creation or initialization fails.
      */
-    public OutputEmitter(String outputPath) {
+    public OutputEmitter(String outputPath) throws IOException {
         if (outputPath == null || outputPath.isEmpty()) {
             this.outPath = null;
         } else {
             this.outPath = Path.of(outputPath);
-            try {
-                Path parent = this.outPath.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                this.writer = Files.newBufferedWriter(this.outPath, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            Path parent = this.outPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
             }
+            this.writer = Files.newBufferedWriter(this.outPath, StandardCharsets.UTF_8);
         }
     }
 
@@ -42,18 +39,15 @@ public final class OutputEmitter implements AutoCloseable {
      *
      * @param line The line to emit.
      * @throws IllegalStateException if called after close().
+     * @throws IOException if writing to file fails.
      */
-    public void emit(String line) {
+    public void emit(String line) throws IOException {
         if (closed) {
             throw new IllegalStateException("Cannot emit after OutputEmitter has been closed");
         }
         if (writer != null) {
-            try {
-                writer.write(line);
-                writer.newLine();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            writer.write(line);
+            writer.newLine();
         } else {
             System.out.println(line);
         }
@@ -65,6 +59,7 @@ public final class OutputEmitter implements AutoCloseable {
      *
      * @throws IOException when write fails.
      */
+    @Override
     public void close() throws IOException {
         if (closed) {
             return; // Already closed, nothing to do
