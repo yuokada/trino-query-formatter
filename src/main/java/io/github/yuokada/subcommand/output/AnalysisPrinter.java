@@ -6,7 +6,7 @@ import java.io.IOException;
 /**
  * Printer for analysis results. Implementations define format-specific output.
  */
-public interface AnalysisPrinter {
+public interface AnalysisPrinter extends AutoCloseable {
 
     /**
      * Prints a single statement's analysis.

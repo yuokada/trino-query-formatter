@@ -16,6 +16,9 @@ import java.util.function.Consumer;
  */
 public final class SqlInput {
 
+    /**
+     * Utility class; prevent instantiation.
+     */
     private SqlInput() {
     }
 

@@ -9,10 +9,11 @@ import java.nio.file.Path;
 /**
  * Emits lines either to stdout or to a file buffer when an output path is provided.
  */
-public final class OutputEmitter {
+public final class OutputEmitter implements AutoCloseable {
 
     private final Path outPath;
     private BufferedWriter writer; // non-null when writing to file incrementally
+    private boolean closed = false;
 
     /**
      * Creates a new emitter.
@@ -40,8 +41,12 @@ public final class OutputEmitter {
      * Emits a single line.
      *
      * @param line The line to emit.
+     * @throws IllegalStateException if called after close().
      */
     public void emit(String line) {
+        if (closed && outPath != null) {
+            throw new IllegalStateException("Cannot emit after OutputEmitter has been closed");
+        }
         if (writer != null) {
             try {
                 writer.write(line);
@@ -65,5 +70,6 @@ public final class OutputEmitter {
             writer.close();
             writer = null;
         }
+        closed = true;
     }
 }

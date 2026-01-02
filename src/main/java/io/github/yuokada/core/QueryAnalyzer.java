@@ -328,26 +328,42 @@ public final class QueryAnalyzer {
     private static String resolveName(QualifiedName qn, String defaultCatalog, String defaultSchema,
         java.util.Set<String> catalogs) {
         var parts = qn.getOriginalParts();
-        if (parts.size() >= 3) {
-            catalogs.add(parts.get(0).toString());
-            return String.join(".", parts.stream().map(Object::toString).toList());
-        } else if (parts.size() == 2) {
-            String schema = parts.get(0).toString();
-            String table = parts.get(1).toString();
-            if (defaultCatalog != null && !defaultCatalog.isEmpty()) {
-                catalogs.add(defaultCatalog);
-                return String.join(".", defaultCatalog, schema, table);
-            }
-            return String.join(".", schema, table);
+        int size = parts.size();
+        if (size >= 3) {
+            return resolveFullyQualifiedName(parts, catalogs);
+        } else if (size == 2) {
+            return resolveSemiQualifiedName(parts, defaultCatalog, catalogs);
         } else { // size == 1
-            String table = parts.get(0).toString();
-            if (defaultCatalog != null && !defaultCatalog.isEmpty() && defaultSchema != null
-                && !defaultSchema.isEmpty()) {
-                catalogs.add(defaultCatalog);
-                return String.join(".", defaultCatalog, defaultSchema, table);
-            }
-            return table;
+            return resolveUnqualifiedName(parts, defaultCatalog, defaultSchema, catalogs);
         }
+    }
+
+    private static String resolveFullyQualifiedName(java.util.List<?> parts,
+        java.util.Set<String> catalogs) {
+        catalogs.add(parts.get(0).toString());
+        return String.join(".", parts.stream().map(Object::toString).toList());
+    }
+
+    private static String resolveSemiQualifiedName(java.util.List<?> parts, String defaultCatalog,
+        java.util.Set<String> catalogs) {
+        String schema = parts.get(0).toString();
+        String table = parts.get(1).toString();
+        if (defaultCatalog != null && !defaultCatalog.isEmpty()) {
+            catalogs.add(defaultCatalog);
+            return String.join(".", defaultCatalog, schema, table);
+        }
+        return String.join(".", schema, table);
+    }
+
+    private static String resolveUnqualifiedName(java.util.List<?> parts, String defaultCatalog,
+        String defaultSchema, java.util.Set<String> catalogs) {
+        String table = parts.get(0).toString();
+        if (defaultCatalog != null && !defaultCatalog.isEmpty()
+            && defaultSchema != null && !defaultSchema.isEmpty()) {
+            catalogs.add(defaultCatalog);
+            return String.join(".", defaultCatalog, defaultSchema, table);
+        }
+        return table;
     }
 
 

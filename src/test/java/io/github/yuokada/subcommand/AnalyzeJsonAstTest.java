@@ -43,16 +43,8 @@ class AnalyzeJsonAstTest {
         Files.writeString(sqlFile, sql);
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, sqlFile.toString());
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("json");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -69,19 +61,9 @@ class AnalyzeJsonAstTest {
         Files.writeString(sqlFile, sql);
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, sqlFile.toString());
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-            var f3 = analyze.getClass().getDeclaredField("showAst");
-            f3.setAccessible(true);
-            f3.set(analyze, true);
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("json");
+        analyze.setShowAst(true);
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -96,19 +78,9 @@ class AnalyzeJsonAstTest {
         System.setIn(new ByteArrayInputStream(sql.getBytes(StandardCharsets.UTF_8)));
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, "");
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "text");
-            var f3 = analyze.getClass().getDeclaredField("showAst");
-            f3.setAccessible(true);
-            f3.set(analyze, true);
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile("");
+        analyze.setFormat("text");
+        analyze.setShowAst(true);
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -121,16 +93,8 @@ class AnalyzeJsonAstTest {
         System.setIn(new ByteArrayInputStream(new byte[0]));
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, "");
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile("");
+        analyze.setFormat("json");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -144,16 +108,8 @@ class AnalyzeJsonAstTest {
         Files.writeString(sqlFile, sql);
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, sqlFile.toString());
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("json");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -169,19 +125,9 @@ class AnalyzeJsonAstTest {
 
         // basic: only queryType and catalogs
         Analyze analyzeBasic = new Analyze();
-        try {
-            var f1 = analyzeBasic.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyzeBasic, sqlFile.toString());
-            var f2 = analyzeBasic.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyzeBasic, "json");
-            var f3 = analyzeBasic.getClass().getDeclaredField("details");
-            f3.setAccessible(true);
-            f3.set(analyzeBasic, "basic");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyzeBasic.setSqlFile(sqlFile.toString());
+        analyzeBasic.setFormat("json");
+        analyzeBasic.setDetails("basic");
         outContent.reset();
         analyzeBasic.call();
         String basicOut = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -192,19 +138,9 @@ class AnalyzeJsonAstTest {
 
         // full: includes flags and tables
         Analyze analyzeFull = new Analyze();
-        try {
-            var f1 = analyzeFull.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyzeFull, sqlFile.toString());
-            var f2 = analyzeFull.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyzeFull, "json");
-            var f3 = analyzeFull.getClass().getDeclaredField("details");
-            f3.setAccessible(true);
-            f3.set(analyzeFull, "full");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyzeFull.setSqlFile(sqlFile.toString());
+        analyzeFull.setFormat("json");
+        analyzeFull.setDetails("full");
         outContent.reset();
         analyzeFull.call();
         String fullOut = outContent.toString(StandardCharsets.UTF_8).strip();
@@ -220,19 +156,9 @@ class AnalyzeJsonAstTest {
         Path outFile = tempDir.resolve("result.ndjson");
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, sqlFile.toString());
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-            var f3 = analyze.getClass().getDeclaredField("outputPath");
-            f3.setAccessible(true);
-            f3.set(analyze, outFile.toString());
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("json");
+        analyze.setOutputPath(outFile.toString());
         outContent.reset();
         analyze.call();
         // stdout should be empty

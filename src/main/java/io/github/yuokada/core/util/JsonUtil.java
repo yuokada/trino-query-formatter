@@ -5,6 +5,9 @@ package io.github.yuokada.core.util;
  */
 public final class JsonUtil {
 
+  /**
+   * Private constructor to prevent instantiation of this utility class.
+   */
   private JsonUtil() {
   }
 
