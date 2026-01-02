@@ -4,15 +4,56 @@ This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
 If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
 
-## Running the application in dev mode
+## CLI Usage
 
-You can run your application in dev mode that enables live coding using:
+This project provides Picocli commands to format and analyze SQL.
 
-```shell script
-./mvnw compile quarkus:dev
-```
+- Format a SQL file:
+  - `./mvnw compile quarkus:dev -Dquarkus.args='format src/main/resources/queries/sample.sql'`
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+- Analyze a SQL file (text output; catalogs only):
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze src/main/resources/queries/sample.sql'`
+
+- Analyze with JSON output (NDJSON: one JSON per statement):
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json src/main/resources/queries/sample.sql'`
+
+- Analyze and show AST (text):
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --show-ast src/main/resources/queries/sample.sql'`
+
+- Analyze with JSON and embed AST:
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --show-ast src/main/resources/queries/sample.sql'`
+  - Limit embedded AST size (chars):
+    - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --show-ast --ast-limit 2000 src/main/resources/queries/sample.sql'`
+
+- Analyze from STDIN:
+  - `cat src/main/resources/queries/sample.sql | ./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json'`
+
+### Detail level and file output
+
+- Detail level: `--details basic|full` (default: `basic`)
+  - JSON: `basic` emits `queryType` and `catalogs`; `full` includes tables and flags
+  - Text: `full` prints extended lines (QueryType/Tables/Flags). `basic` keeps legacy output
+- Write output to file: `--output <path>`
+  - Writes the entire output to the specified file. Stdout remains empty when `--output` is used.
+  - Output is written incrementally to the file (streaming) to reduce memory usage.
+  - Arrays in text/JSON outputs are sorted for stable diffs.
+
+### Catalog/Schema defaults
+
+- Default catalog: `--catalog <name>`
+  - Resolves partially qualified names like `schema.table` to `<catalog>.schema.table`.
+- Default schema: `--schema <name>`
+  - Resolves unqualified names like `table` to `<catalog>.<schema>.table` (when both are provided).
+- Examples:
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --details full --catalog c1 "SELECT * FROM s.t"'`
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --details full --catalog c1 --schema s1 "SELECT * FROM t"'`
+  - `./mvnw compile quarkus:dev -Dquarkus.args='analyze --format json --details full --catalog c1 --schema s1 src/main/resources/queries/sample.sql'`
+
+
+## Roadmap (Next Small Tasks)
+
+- Schema reporting: add `schemas` in details=full.
+
 
 ## Packaging and running the application
 

@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
-import picocli.CommandLine.Option;
 
 @TopCommand
 @CommandLine.Command(
@@ -23,32 +22,32 @@ import picocli.CommandLine.Option;
     description = "Tool to format SQL queries for Trino.")
 public class EntryCommand implements Callable<Integer> {
 
-  private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
+    private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
 
-      /**
+    /**
      * The version of the command.
      */
     @CommandLine.Option(
-            names = {"--version", "-V"},
-            versionHelp = true,
-            description = "print version information and exit")
+        names = {"--version", "-V"},
+        versionHelp = true,
+        description = "print version information and exit")
     private boolean versionRequested;
 
     /**
      * Show help message.
      */
     @CommandLine.Option(
-            names = {"--help", "-h"},
-            usageHelp = true,
-            description = "show this help message and exit")
+        names = {"--help", "-h"},
+        usageHelp = true,
+        description = "show this help message and exit")
     private boolean help;
 
-  public static void main(String[] args) throws IOException {
-    int exitCode = new CommandLine(new EntryCommand()).execute(args);
-    System.exit(exitCode);
-  }
+    public static void main(String[] args) throws IOException {
+        int exitCode = new CommandLine(new EntryCommand()).execute(args);
+        System.exit(exitCode);
+    }
 
-      /**
+    /**
      * The main entry point of the command.
      *
      * @return The exit code.
@@ -56,8 +55,8 @@ public class EntryCommand implements Callable<Integer> {
      */
     @Override
     public Integer call() throws Exception {
-    CommandLine.usage(this, System.out);
-    // Quarkus.waitForExit();
-    return ExitCode.OK;
-  }
+        CommandLine.usage(this, System.out);
+        // Quarkus.waitForExit();
+        return ExitCode.OK;
+    }
 }
