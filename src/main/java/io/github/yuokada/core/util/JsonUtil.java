@@ -28,7 +28,7 @@ public final class JsonUtil {
       return "";
     }
     char[] escaped = ENCODER.quoteAsString(s);
-    return new String(escaped);
+    return String.valueOf(escaped);
   }
 }
 
