@@ -90,7 +90,7 @@ public final class SqlInput {
                     queryCounter++;
                     consumer.accept(queryCounter, split.statement());
                 }
-                // reset buffer and add trailing partial statement if any
+                // create new buffer for trailing partial statement if any
                 buffer = new StringBuilder();
                 String partial = splitter.getPartialStatement();
                 if (!partial.isEmpty()) {
