@@ -38,19 +38,9 @@ class AnalyzeJsonFullExtendedTest {
         Files.writeString(sqlFile, sql);
 
         Analyze analyze = new Analyze();
-        try {
-            var f1 = analyze.getClass().getDeclaredField("sqlFile");
-            f1.setAccessible(true);
-            f1.set(analyze, sqlFile.toString());
-            var f2 = analyze.getClass().getDeclaredField("format");
-            f2.setAccessible(true);
-            f2.set(analyze, "json");
-            var f3 = analyze.getClass().getDeclaredField("details");
-            f3.setAccessible(true);
-            f3.set(analyze, "full");
-        } catch (ReflectiveOperationException e) {
-            throw new IOException(e);
-        }
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8).strip();

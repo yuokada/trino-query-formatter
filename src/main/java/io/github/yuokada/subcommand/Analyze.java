@@ -24,8 +24,6 @@ public class Analyze implements Callable<Integer> {
     @ParentCommand
     private EntryCommand entryCommand;
 
-    // No parser needed here; QueryAnalyzer handles parsing
-
     /**
      * The file to analyze.
      */
@@ -39,7 +37,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--format"},
         defaultValue = "text",
         description = "Output format: text|json")
-    String format;
+    private String format;
 
     /**
      * When true, also prints the AST of each statement.
@@ -48,7 +46,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--show-ast"},
         defaultValue = "false",
         description = "Show AST for each statement")
-    boolean showAst;
+    private boolean showAst;
 
     /**
      * Detail level. Supported: basic, full. Default: basic.
@@ -57,57 +55,56 @@ public class Analyze implements Callable<Integer> {
         names = {"--details"},
         defaultValue = "basic",
         description = "Detail level: basic|full")
-    String details;
+    private String details;
 
     /**
      * If specified, writes the output to the given file instead of stdout.
      */
     @CommandLine.Option(names = {
         "--output"}, description = "Write output to the specified file path")
-    String outputPath;
+    private String outputPath;
 
     /**
      * Default catalog for unqualified or partially qualified names.
      */
     @CommandLine.Option(names = {
         "--catalog"}, description = "Default catalog for un/partially qualified names")
-    String defaultCatalog;
+    private String defaultCatalog;
 
     /**
      * Default schema for unqualified names.
      */
     @CommandLine.Option(names = {"--schema"}, description = "Default schema for unqualified names")
-    String defaultSchema;
+    private String defaultSchema;
 
     /**
      * Maximum characters for embedded AST (JSON).
      */
     @CommandLine.Option(names = {
         "--ast-limit"}, defaultValue = "10000", description = "Maximum characters for embedded AST in JSON output")
-    int astLimit;
+    private int astLimit;
 
     @Override
     public Integer call() throws IOException {
-        OutputEmitter emitter = new OutputEmitter(outputPath);
-        AnalysisPrinter printer = isJsonFormat()
-            ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
-            : new TextAnalysisPrinter(emitter, isFullDetails(), showAst);
+        try (OutputEmitter emitter = new OutputEmitter(outputPath);
+             AnalysisPrinter printer = isJsonFormat()
+                 ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
+                 : new TextAnalysisPrinter(emitter, isFullDetails(), showAst)) {
 
-        if (!sqlFile.isEmpty()) {
-            SqlInput.forEachStatementFromFile(sqlFile, stmt -> {
-                QueryAnalysisResult result =
-                    QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
-                printer.printStatement(result, null, stmt);
-            });
-        } else {
-            SqlInput.forEachStatementFromStdin((idx, stmt) -> {
-                QueryAnalysisResult result =
-                    QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
-                printer.printStatement(result, idx, stmt);
-            });
+            if (!sqlFile.isEmpty()) {
+                SqlInput.forEachStatementFromFile(sqlFile, stmt -> {
+                    QueryAnalysisResult result =
+                        QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
+                    printer.printStatement(result, null, stmt);
+                });
+            } else {
+                SqlInput.forEachStatementFromStdin((idx, stmt) -> {
+                    QueryAnalysisResult result =
+                        QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
+                    printer.printStatement(result, idx, stmt);
+                });
+            }
         }
-
-        printer.close();
         return ExitCode.OK;
     }
 
@@ -130,5 +127,40 @@ public class Analyze implements Callable<Integer> {
      */
     private boolean isFullDetails() {
         return "full".equalsIgnoreCase(details);
+    }
+
+    // Package-private setters to support testing without reflection.
+    // These methods should only be used in test code.
+
+    void setSqlFile(String sqlFile) {
+        this.sqlFile = sqlFile;
+    }
+
+    void setFormat(String format) {
+        this.format = format;
+    }
+
+    void setShowAst(boolean showAst) {
+        this.showAst = showAst;
+    }
+
+    void setDetails(String details) {
+        this.details = details;
+    }
+
+    void setOutputPath(String outputPath) {
+        this.outputPath = outputPath;
+    }
+
+    void setDefaultCatalog(String defaultCatalog) {
+        this.defaultCatalog = defaultCatalog;
+    }
+
+    void setDefaultSchema(String defaultSchema) {
+        this.defaultSchema = defaultSchema;
+    }
+
+    void setAstLimit(int astLimit) {
+        this.astLimit = astLimit;
     }
 }
