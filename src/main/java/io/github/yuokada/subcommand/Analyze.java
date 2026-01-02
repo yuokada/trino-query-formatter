@@ -9,11 +9,12 @@ import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.trino.cli.lexer.StatementSplitter;
-import io.trino.sql.parser.SqlParser;
-import io.trino.sql.tree.Expression;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -29,7 +30,7 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
     @ParentCommand
     private EntryCommand entryCommand;
 
-    private static final SqlParser sqlParser = new SqlParser();
+    // No parser needed here; QueryAnalyzer handles parsing
 
     /**
      * The file to analyze.
@@ -115,7 +116,8 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
             }
         } else {
             Integer queryCounter = 0;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 StringBuilder buffer = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -151,12 +153,7 @@ public class Analyze implements Callable<Integer>, SubCommandUtil {
     }
 
     private String readFromFile(String path) throws IOException {
-        return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
-    }
-
-    private static String analyze(String sql) {
-        Expression expression = sqlParser.createExpression(sql);
-        return expression.toString();
+        return Files.readString(Paths.get(path), StandardCharsets.UTF_8);
     }
 
     /**

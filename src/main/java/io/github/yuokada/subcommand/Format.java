@@ -11,6 +11,9 @@ import io.trino.sql.tree.Statement;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -43,10 +46,12 @@ public class Format implements Callable<Integer>, SubCommandUtil {
                 System.out.println(formatted + ";");
             }
         } else {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 StringBuilder buffer = new StringBuilder();
-                while (reader.ready()) {
-                    buffer.append(reader.readLine()).append("\n");
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    buffer.append(line).append('\n');
                     String sql = buffer.toString();
                     StatementSplitter splitter = new StatementSplitter(sql,
                         ImmutableSet.of(";", "\\G"));
@@ -54,8 +59,7 @@ public class Format implements Callable<Integer>, SubCommandUtil {
                         String formatted = format(split.statement());
                         System.out.println(formatted + ";");
                     }
-
-                    // replace buffer with trailing partial statement
+                    // Replace buffer with trailing partial statement
                     buffer = new StringBuilder();
                     String partial = splitter.getPartialStatement();
                     if (!partial.isEmpty()) {
@@ -73,7 +77,7 @@ public class Format implements Callable<Integer>, SubCommandUtil {
     }
 
     private String readFromFile(String path) throws IOException {
-        return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+        return Files.readString(Paths.get(path), StandardCharsets.UTF_8);
     }
 
     private static String format(String sql) {

@@ -11,7 +11,6 @@ import java.nio.file.Path;
  */
 public final class OutputEmitter {
 
-    private final StringBuilder buffer; // kept for stdout mode (null when using writer)
     private final Path outPath;
     private BufferedWriter writer; // non-null when writing to file incrementally
 
@@ -23,12 +22,13 @@ public final class OutputEmitter {
     public OutputEmitter(String outputPath) {
         if (outputPath == null || outputPath.isEmpty()) {
             this.outPath = null;
-            this.buffer = null;
         } else {
             this.outPath = Path.of(outputPath);
-            this.buffer = null;
             try {
-                Files.createDirectories(this.outPath.getParent());
+                Path parent = this.outPath.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
                 this.writer = Files.newBufferedWriter(this.outPath, StandardCharsets.UTF_8);
             } catch (IOException e) {
                 throw new RuntimeException(e);
