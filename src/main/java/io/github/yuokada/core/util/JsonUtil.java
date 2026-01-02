@@ -1,9 +1,14 @@
 package io.github.yuokada.core.util;
 
+import com.fasterxml.jackson.core.io.JsonStringEncoder;
+
 /**
  * Minimal JSON utility focused on string escaping for safe embedding into JSON.
+ * Uses Jackson's well-tested JsonStringEncoder for reliable JSON string escaping.
  */
 public final class JsonUtil {
+
+  private static final JsonStringEncoder ENCODER = JsonStringEncoder.getInstance();
 
   /**
    * Private constructor to prevent instantiation of this utility class.
@@ -12,7 +17,7 @@ public final class JsonUtil {
   }
 
   /**
-   * Escapes a Java string for JSON string literal context.
+   * Escapes a Java string for JSON string literal context using Jackson's JsonStringEncoder.
    * Converts control characters and quotes/backslashes to their escaped forms.
    *
    * @param s input string (nullable)
@@ -22,34 +27,8 @@ public final class JsonUtil {
     if (s == null) {
       return "";
     }
-    StringBuilder out = new StringBuilder();
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      switch (c) {
-        case '"':
-          out.append("\\\"");
-          break;
-        case '\\':
-          out.append("\\\\");
-          break;
-        case '\n':
-          out.append("\\n");
-          break;
-        case '\r':
-          out.append("\\r");
-          break;
-        case '\t':
-          out.append("\\t");
-          break;
-        default:
-          if (c < 0x20) {
-            out.append(String.format("\\u%04x", (int) c));
-          } else {
-            out.append(c);
-          }
-      }
-    }
-    return out.toString();
+    char[] escaped = ENCODER.quoteAsString(s);
+    return new String(escaped);
   }
 }
 
