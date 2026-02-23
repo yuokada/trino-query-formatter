@@ -1,6 +1,7 @@
 package io.github.yuokada.subcommand;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,8 +22,11 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>For each SQL file in {@code src/main/resources/queries/}, the formatter output is compared
  * against a corresponding expected file in {@code src/test/resources/queries/expected/}.
- * On the first run (no expected file), the actual output is written as the new golden file
- * so that subsequent runs validate against it.
+ *
+ * <p>When an expected file is missing, the test fails with an actionable message.
+ * To (re)generate expected files, set the {@code UPDATE_GOLDEN=true} environment variable
+ * before running the tests:
+ * <pre>{@code UPDATE_GOLDEN=true ./mvnw test -Dtest=GoldenFormatTest}</pre>
  */
 class GoldenFormatTest {
 
@@ -73,7 +77,7 @@ class GoldenFormatTest {
         Format format = new Format();
         format.setSqlFile(inputPath.toString());
         format.call();
-        String actual = outContent.toString(StandardCharsets.UTF_8).trim();
+        String actual = outContent.toString(StandardCharsets.UTF_8);
         outContent.reset();
 
         if (actual.isEmpty()) {
@@ -88,14 +92,25 @@ class GoldenFormatTest {
         Files.createDirectories(expectedDir);
         Path expectedPath = expectedDir.resolve(sqlFileName.replace(".sql", ".expected.sql"));
 
+        boolean updateGolden = "true".equalsIgnoreCase(System.getenv("UPDATE_GOLDEN"));
+
         if (!Files.exists(expectedPath)) {
-            // First run: write golden file and pass
-            Files.writeString(expectedPath, actual + "\n", StandardCharsets.UTF_8);
-            originalOut.println("[GoldenFormatTest] Generated golden file: " + expectedPath);
+            if (updateGolden) {
+                Files.writeString(expectedPath, actual, StandardCharsets.UTF_8);
+                originalOut.println("[GoldenFormatTest] Generated golden file: " + expectedPath);
+                return;
+            }
+            fail("Golden file missing: " + expectedPath
+                + ". Re-run with UPDATE_GOLDEN=true to generate it.");
+        }
+
+        if (updateGolden) {
+            Files.writeString(expectedPath, actual, StandardCharsets.UTF_8);
+            originalOut.println("[GoldenFormatTest] Updated golden file: " + expectedPath);
             return;
         }
 
-        String expected = Files.readString(expectedPath, StandardCharsets.UTF_8).trim();
+        String expected = Files.readString(expectedPath, StandardCharsets.UTF_8);
         assertEquals(expected, actual,
             "Formatter output for " + sqlFileName + " differs from golden file");
     }

@@ -48,7 +48,7 @@ public class Format implements Callable<Integer> {
     /**
      * Output file path. When null or empty, writes to stdout.
      */
-    @CommandLine.Option(names = {"--output"},
+    @CommandLine.Option(names = {"-o", "--output"},
         description = "Write output to this file instead of stdout.")
     private String outputPath;
 
@@ -93,6 +93,11 @@ public class Format implements Callable<Integer> {
             kc = KeywordCase.fromString(this.keywordCase);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
+            return ExitCodes.ERROR;
+        }
+
+        if (this.indentSize < 1) {
+            System.err.println("--indent-size must be >= 1, got: " + this.indentSize);
             return ExitCodes.ERROR;
         }
 
@@ -145,12 +150,12 @@ public class Format implements Callable<Integer> {
      * @throws IOException if the file cannot be read
      */
     private Integer runCheckMode(String path, KeywordCase kc) throws IOException {
-        String original = SqlInput.readFileUtf8(path).stripTrailing();
+        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
         StringBuilder formatted = new StringBuilder();
         SqlInput.forEachStatementFromFile(path, stmt -> {
             formatted.append(formatStatement(stmt, kc)).append(";\n");
         });
-        String formattedStr = formatted.toString().stripTrailing();
+        String formattedStr = normalizeNewlines(formatted.toString()).stripTrailing();
         if (!formattedStr.equals(original)) {
             if (!isQuiet()) {
                 System.err.println("Would reformat: " + path);
@@ -158,6 +163,17 @@ public class Format implements Callable<Integer> {
             return ExitCodes.WARNING;
         }
         return ExitCodes.OK;
+    }
+
+    /**
+     * Normalises line endings to {@code \n} so that files with CRLF or CR endings
+     * compare correctly against the formatter's {@code \n}-only output.
+     *
+     * @param input the string to normalise
+     * @return the string with all line endings converted to {@code \n}
+     */
+    private static String normalizeNewlines(String input) {
+        return input.replace("\r\n", "\n").replace("\r", "\n");
     }
 
     /**

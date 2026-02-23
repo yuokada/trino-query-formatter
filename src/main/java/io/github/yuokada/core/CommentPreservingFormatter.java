@@ -82,6 +82,12 @@ public final class CommentPreservingFormatter {
                 leadingComments.add(entry.text);
             } else {
                 int fmtIdx = findFormattedTokenIndex(origTokenTexts, entry.anchorIndex, fmtTokens);
+                if (fmtIdx < 0) {
+                    // Fallback: walk backward to the nearest preceding token that exists in
+                    // the formatted stream (handles tokens the formatter removes, e.g. AS).
+                    fmtIdx = findFallbackFormattedTokenIndex(
+                        origTokenTexts, entry.anchorIndex, fmtTokens);
+                }
                 if (fmtIdx >= 0) {
                     int anchorLine = fmtTokens.get(fmtIdx).lineNumber;
                     if (entry.isTrailing) {
@@ -95,29 +101,35 @@ public final class CommentPreservingFormatter {
             }
         }
 
-        StringBuilder result = new StringBuilder();
+        // Build the result as a list of lines, then join — avoids manual newline bookkeeping.
+        List<String> resultLines = new ArrayList<>();
         for (String comment : leadingComments) {
-            result.append(comment).append("\n");
+            resultLines.add(comment);
         }
         for (int i = 0; i < lines.length; i++) {
             if (leadingByLine.containsKey(i)) {
                 String indent = extractIndent(lines[i]);
                 for (String comment : leadingByLine.get(i)) {
-                    result.append(indent).append(comment).append("\n");
+                    resultLines.add(indent + comment);
                 }
             }
-            result.append(lines[i]);
+            StringBuilder currentLine = new StringBuilder(lines[i]);
             if (trailingByLine.containsKey(i)) {
                 for (String comment : trailingByLine.get(i)) {
-                    result.append(" ").append(comment);
+                    currentLine.append(" ").append(comment);
                 }
             }
-            if (i < lines.length - 1) {
-                result.append("\n");
+            resultLines.add(currentLine.toString());
+        }
+        // Emit any leading comments anchored "after" the last line (insertion index == length).
+        if (leadingByLine.containsKey(lines.length)) {
+            String indent = lines.length > 0 ? extractIndent(lines[lines.length - 1]) : "";
+            for (String comment : leadingByLine.get(lines.length)) {
+                resultLines.add(indent + comment);
             }
         }
 
-        return result.toString();
+        return String.join("\n", resultLines);
     }
 
     /**
@@ -221,6 +233,27 @@ public final class CommentPreservingFormatter {
                     return i;
                 }
                 count++;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Fallback for {@link #findFormattedTokenIndex} when the primary anchor cannot be located.
+     * Walks backward from {@code anchorIdx - 1} until it finds a token that does appear in
+     * {@code fmtTokens}, and returns that index. Returns {@code -1} if none is found.
+     *
+     * @param origTokenTexts SQL token texts from the original SQL
+     * @param anchorIdx      index of the unmatched anchor in {@code origTokenTexts}
+     * @param fmtTokens      SQL tokens from the formatted SQL
+     * @return the nearest preceding matching index in {@code fmtTokens}, or {@code -1}
+     */
+    private static int findFallbackFormattedTokenIndex(
+            List<String> origTokenTexts, int anchorIdx, List<TokenWithLine> fmtTokens) {
+        for (int i = anchorIdx - 1; i >= 0; i--) {
+            int idx = findFormattedTokenIndex(origTokenTexts, i, fmtTokens);
+            if (idx >= 0) {
+                return idx;
             }
         }
         return -1;
