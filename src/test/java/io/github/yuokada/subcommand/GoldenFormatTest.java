@@ -56,7 +56,15 @@ class GoldenFormatTest {
      * @return stream of SQL file names
      */
     static Stream<String> sqlFileNames() {
-        return Stream.of("query1.sql", "query2.sql", "query4.sql", "sample.sql");
+        return Stream.of(
+            "query1.sql",
+            "query2.sql",
+            "query4.sql",
+            "sample.sql",
+            "case_expressions.sql",
+            "complex_joins.sql",
+            "subqueries.sql"
+        );
     }
 
     @ParameterizedTest(name = "{0}")
