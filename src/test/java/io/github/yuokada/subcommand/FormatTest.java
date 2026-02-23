@@ -1,6 +1,7 @@
 package io.github.yuokada.subcommand;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -161,6 +162,119 @@ class FormatTest {
         String output = outContent.toString().trim();
         assertTrue(output.contains("/* copyright */"),
             "Leading block comment should be preserved in output: " + output);
+    }
+
+    @Test
+    void testKeywordCase_lower(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        Files.writeString(sqlFile, "select * from foo where id = 1;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setKeywordCase("lower");
+        format.call();
+
+        String output = outContent.toString().trim();
+        assertTrue(output.contains("select"), "SELECT should be lowercased: " + output);
+        assertTrue(output.contains("from"), "FROM should be lowercased: " + output);
+        assertTrue(output.contains("where"), "WHERE should be lowercased: " + output);
+        assertFalse(output.contains("SELECT"), "No uppercase SELECT expected: " + output);
+    }
+
+    @Test
+    void testKeywordCase_keep(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        Files.writeString(sqlFile, "Select * From foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setKeywordCase("keep");
+        format.call();
+
+        String output = outContent.toString().trim();
+        assertTrue(output.contains("Select"), "Select should be preserved: " + output);
+        assertTrue(output.contains("From"), "From should be preserved: " + output);
+    }
+
+    @Test
+    void testKeywordCase_invalidValue(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        Files.writeString(sqlFile, "select * from foo;");
+
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(errContent));
+        try {
+            Format format = new Format();
+            format.setSqlFile(sqlFile.toString());
+            format.setKeywordCase("bad");
+            int exitCode = format.call();
+            assertEquals(ExitCodes.ERROR, exitCode, "Invalid keyword-case should exit ERROR");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    void testIndentSize_4(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        Files.writeString(sqlFile, "select * from foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setIndentSize(4);
+        format.call();
+
+        String output = outContent.toString().trim();
+        // Trino formats as "FROM\n  foo" (2 spaces); with indent-size=4 it becomes "FROM\n    foo".
+        assertTrue(output.contains("\n    foo"), "Should use 4-space indent: " + output);
+        assertFalse(output.contains("\n  foo"), "Should not have 2-space-indented foo: " + output);
+    }
+
+    @Test
+    void testMaxLineLength_warnsOnLongLine(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        // After formatting, "  some_long_table_name" (22 chars) will exceed the limit.
+        Files.writeString(sqlFile, "select * from some_long_table_name;");
+
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(errContent));
+        try {
+            Format format = new Format();
+            format.setSqlFile(sqlFile.toString());
+            format.setMaxLineLength(10);
+            format.call();
+
+            // Output should still be produced
+            assertFalse(outContent.toString().isBlank(), "Output should still be produced");
+            // Warning should be printed to stderr
+            assertTrue(errContent.toString().contains("exceeds max-line-length"),
+                "Should warn about long lines: " + errContent);
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    void testMaxLineLength_noWarnWhenUnlimited(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("test.sql");
+        Files.writeString(sqlFile, "select id from foo;");
+
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(errContent));
+        try {
+            Format format = new Format();
+            format.setSqlFile(sqlFile.toString());
+            format.setMaxLineLength(0); // 0 = unlimited
+            format.call();
+
+            assertFalse(errContent.toString().contains("exceeds"),
+                "No warning expected when max-line-length=0");
+        } finally {
+            System.setErr(originalErr);
+        }
     }
 
     @Test
