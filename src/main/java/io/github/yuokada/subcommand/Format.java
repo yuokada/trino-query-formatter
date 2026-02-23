@@ -7,12 +7,14 @@ import io.github.yuokada.EntryCommand;
 import io.github.yuokada.core.CommentPreservingFormatter;
 import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.KeywordCaseTransformer;
+import io.github.yuokada.core.UnifiedDiff;
 import io.github.yuokada.core.KeywordCaseTransformer.KeywordCase;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import io.trino.sql.parser.SqlParser;
 import io.trino.sql.tree.Statement;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
@@ -61,6 +63,14 @@ public class Format implements Callable<Integer> {
     private boolean check;
 
     /**
+     * When true, print a colored unified diff of what would change without writing output.
+     * Exits with {@link ExitCodes#WARNING} when differences are found.
+     */
+    @CommandLine.Option(names = {"--diff"},
+        description = "Show unified diff of formatting changes; exit 1 if not already formatted.")
+    private boolean diff;
+
+    /**
      * SQL keyword case mode. One of {@code upper} (default), {@code lower}, or {@code keep}.
      */
     @CommandLine.Option(names = {"--keyword-case"}, defaultValue = "upper",
@@ -101,9 +111,13 @@ public class Format implements Callable<Integer> {
             return ExitCodes.ERROR;
         }
 
-        if (this.check && isStdin) {
-            System.err.println("--check is not supported for stdin input");
+        if ((this.check || this.diff) && isStdin) {
+            System.err.println("--check/--diff is not supported for stdin input");
             return ExitCodes.ERROR;
+        }
+
+        if (this.diff) {
+            return runDiffMode(this.sqlFile, kc);
         }
 
         if (this.check) {
@@ -163,6 +177,40 @@ public class Format implements Callable<Integer> {
             return ExitCodes.WARNING;
         }
         return ExitCodes.OK;
+    }
+
+    /**
+     * Computes and prints a unified diff between the current contents of {@code path}
+     * and the formatted output, then returns {@link ExitCodes#WARNING} when differences
+     * are found or {@link ExitCodes#OK} when the file is already formatted.
+     *
+     * <p>Color is enabled automatically when a terminal is attached ({@code System.console() != null}).
+     *
+     * @param path the file path to diff
+     * @param kc   the keyword case mode to apply during formatting
+     * @return {@link ExitCodes#OK} when already formatted, {@link ExitCodes#WARNING} otherwise
+     * @throws IOException if the file cannot be read
+     */
+    private Integer runDiffMode(String path, KeywordCase kc) throws IOException {
+        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
+        StringBuilder formatted = new StringBuilder();
+        SqlInput.forEachStatementFromFile(path, stmt -> {
+            formatted.append(formatStatement(stmt, kc)).append(";\n");
+        });
+        String formattedStr = normalizeNewlines(formatted.toString()).stripTrailing();
+        if (formattedStr.equals(original)) {
+            return ExitCodes.OK;
+        }
+        boolean colorize = System.console() != null;
+        String diff = UnifiedDiff.compute(
+            Arrays.asList(original.split("\n", -1)),
+            Arrays.asList(formattedStr.split("\n", -1)),
+            path,
+            path,
+            3,
+            colorize);
+        System.out.print(diff);
+        return ExitCodes.WARNING;
     }
 
     /**
@@ -302,5 +350,9 @@ public class Format implements Callable<Integer> {
 
     void setMaxLineLength(int value) {
         this.maxLineLength = value;
+    }
+
+    void setDiff(boolean value) {
+        this.diff = value;
     }
 }

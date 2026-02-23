@@ -340,4 +340,55 @@ class FormatTest {
         // Output should remain identical after reformatting (formatting idempotence)
         assertEquals(first, second);
     }
+
+    @Test
+    void testDiffMode_alreadyFormatted(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("formatted.sql");
+        Files.writeString(sqlFile, "SELECT *\nFROM\n  foo\n;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setDiff(true);
+        int exitCode = format.call();
+
+        assertEquals(ExitCodes.OK, exitCode, "Already-formatted SQL should exit OK");
+        assertEquals("", outContent.toString(StandardCharsets.UTF_8),
+            "No diff output expected when file is already formatted");
+    }
+
+    @Test
+    void testDiffMode_needsReformat(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("unformatted.sql");
+        Files.writeString(sqlFile, "select * from foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setDiff(true);
+        int exitCode = format.call();
+
+        assertEquals(ExitCodes.WARNING, exitCode, "Unformatted SQL should exit WARNING");
+        String output = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("---"), "Diff should contain --- header");
+        assertTrue(output.contains("+++"), "Diff should contain +++ header");
+        assertTrue(output.contains("@@"), "Diff should contain @@ hunk header");
+    }
+
+    @Test
+    void testDiffMode_stdin_returnsError() throws IOException {
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(errContent));
+        try {
+            Format format = new Format();
+            format.setSqlFile("");
+            format.setDiff(true);
+            int exitCode = format.call();
+
+            assertEquals(ExitCodes.ERROR, exitCode, "--diff with stdin should exit ERROR");
+            assertTrue(errContent.toString().contains("--check/--diff"),
+                "Error message should mention --check/--diff");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
 }
