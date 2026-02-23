@@ -46,6 +46,18 @@ public class EntryCommand implements Callable<Integer> {
     private boolean help;
 
     /**
+     * Enable verbose output (print file names, statement counts, etc. to stderr).
+     */
+    @CommandLine.Option(names = {"-v", "--verbose"}, description = "Enable verbose output.")
+    private boolean verbose;
+
+    /**
+     * Suppress non-error output (e.g. 'Would reformat' messages in --check mode).
+     */
+    @CommandLine.Option(names = {"--quiet"}, description = "Suppress non-error output.")
+    private boolean quiet;
+
+    /**
      * Main entry point for the command-line application.
      *
      * @param args Command-line arguments.
@@ -67,5 +79,23 @@ public class EntryCommand implements Callable<Integer> {
         CommandLine.usage(this, System.out);
         // Quarkus.waitForExit();
         return ExitCode.OK;
+    }
+
+    /**
+     * Returns {@code true} if verbose output is enabled.
+     *
+     * @return true when the {@code -v}/{@code --verbose} flag was supplied
+     */
+    public boolean isVerbose() {
+        return this.verbose;
+    }
+
+    /**
+     * Returns {@code true} if quiet mode is enabled.
+     *
+     * @return true when the {@code --quiet} flag was supplied
+     */
+    public boolean isQuiet() {
+        return this.quiet;
     }
 }
