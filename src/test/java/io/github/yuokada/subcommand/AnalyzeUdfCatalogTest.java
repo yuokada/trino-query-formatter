@@ -47,6 +47,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -67,6 +68,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 
@@ -90,6 +92,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 
@@ -110,6 +113,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 
@@ -132,6 +136,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 
@@ -152,6 +157,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
@@ -180,13 +186,15 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
         assertTrue(out.contains("W002"), "W002 should appear for unknown_fn: " + out);
-        assertTrue(out.contains("W003"), "W003 should appear for catalog_fn arity mismatch: " + out);
+        assertTrue(out.contains("W003"),
+            "W003 should appear for catalog_fn arity mismatch: " + out);
         assertTrue(out.contains("unknown_fn"), "unknown_fn should appear: " + out);
         assertTrue(out.contains("catalog_fn"), "catalog_fn should appear: " + out);
     }
@@ -206,6 +214,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         // validateFunctions NOT set
         analyze.call();
@@ -228,6 +237,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         int exitCode = analyze.call();
 
@@ -270,6 +280,7 @@ class AnalyzeUdfCatalogTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setUdfCatalogPath(yaml.toString());
         analyze.call();
 

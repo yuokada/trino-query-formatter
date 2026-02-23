@@ -352,8 +352,8 @@ public final class TrinoBuiltinFunctions {
         scalar.add("render");
         scalar.add("rgb");
         // ---- HyperLogLog ----
-        scalar.add("approx_set");
-        scalar.add("cardinality");
+        // approx_set is an aggregate function (already in AGGREGATE_FUNCTIONS)
+        // cardinality is a scalar for arrays/maps (already added above)
         scalar.add("empty_approx_set");
         // ---- Type / Conversion ----
         scalar.add("cast");
@@ -378,11 +378,10 @@ public final class TrinoBuiltinFunctions {
         scalar.add("jaccard_index");
         scalar.add("fail");
         scalar.add("version");
-        scalar.add("last_day_of_month");
+        // last_day_of_month already added in Date/Time section above
         scalar.add("human_readable_seconds");
-        scalar.add("tdigest_agg");
+        // tdigest_agg and qdigest_agg are aggregate functions (already in AGGREGATE_FUNCTIONS)
         scalar.add("values_at_quantiles");
-        scalar.add("qdigest_agg");
         scalar.add("value_at_quantile");
         SCALAR_FUNCTIONS = Collections.unmodifiableSet(scalar);
 

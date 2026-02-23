@@ -252,7 +252,7 @@ JSON:
 | `UdfDefinition` | 1 UDF エントリの POJO (name/description/arity/minArgs/maxArgs) |
 | `UdfCatalog` | YAML ファイルをロードし `Map<String, UdfDefinition>` を返すユーティリティ |
 
-`UdfCatalog.load(Path)` は `YAMLMapper` (Jackson YAML) でデシリアライズし、
+`UdfCatalog.load(Path)` は `ObjectMapper(new YAMLFactory())` (Jackson YAML) でデシリアライズし、
 キーは関数名の小文字。
 
 ---

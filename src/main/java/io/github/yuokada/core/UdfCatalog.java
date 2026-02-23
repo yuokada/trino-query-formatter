@@ -31,6 +31,11 @@ public final class UdfCatalog {
     }
 
     /**
+     * Shared YAML-capable mapper; instantiated once to avoid per-call allocation overhead.
+     */
+    private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
+
+    /**
      * Root element of the YAML document.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -52,8 +57,7 @@ public final class UdfCatalog {
      * @throws IOException if the file cannot be read or parsed
      */
     public static Map<String, UdfDefinition> load(Path path) throws IOException {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        Root root = mapper.readValue(path.toFile(), Root.class);
+        Root root = YAML_MAPPER.readValue(path.toFile(), Root.class);
         if (root == null || root.functions == null) {
             return Collections.emptyMap();
         }

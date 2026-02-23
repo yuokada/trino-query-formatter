@@ -13,6 +13,7 @@ import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -223,7 +224,7 @@ public class Analyze implements Callable<Integer> {
         }
         if (input.startsWith("@")) {
             Path filePath = Path.of(input.substring(1));
-            for (String line : Files.readAllLines(filePath)) {
+            for (String line : Files.readAllLines(filePath, StandardCharsets.UTF_8)) {
                 String trimmed = line.trim();
                 if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
                     result.add(trimmed.toLowerCase());

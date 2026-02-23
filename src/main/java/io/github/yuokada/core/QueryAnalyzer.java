@@ -268,8 +268,11 @@ public final class QueryAnalyzer {
             String desc = type + ":" + (join.getCriteria().isPresent() ? "on" : "none");
             b.addJoin(desc);
         } else if (node instanceof FunctionCall fc) {
-            String fn = fc.getName().toString();
-            String lower = fn.toLowerCase();
+            // Use the unqualified (last-part) name so that catalog.schema.fn() is treated
+            // the same as fn() for built-in/known-function lookup and arity checking.
+            // QualifiedName.getParts() returns lowercase strings.
+            List<String> nameParts = fc.getName().getParts();
+            String lower = nameParts.get(nameParts.size() - 1);
             if (fc.getWindow().isPresent()) {
                 b.addFunctionWindow(lower);
             } else if (TrinoBuiltinFunctions.isAggregate(lower)) {
@@ -284,9 +287,9 @@ public final class QueryAnalyzer {
                 b.addUnknownFunction(lower);
             }
             // udfCatalog == null means W003 is disabled; skip arity check.
-            if (udfCatalog != null && udfCatalog.containsKey(lower)) {
+            if (udfCatalog != null) {
                 UdfDefinition def = udfCatalog.get(lower);
-                if (def.hasArityConstraint()) {
+                if (def != null && def.hasArityConstraint()) {
                     int actualArgs = fc.getArguments().size();
                     if (!def.isArityValid(actualArgs)) {
                         b.addArityMismatch(lower, def.expectedArityDescription(), actualArgs);

@@ -164,6 +164,7 @@ analyze [options] [<file>]
 | `--schema <name>` | — | Default schema for unqualified names (`table`), requires `--catalog`. |
 | `--validate-functions` | false | Flag functions that are not Trino built-ins as **W002** lint warnings. |
 | `--known-functions <list\|@file>` | — | Comma-separated list of additional known function names, or `@path` to a text file (one name per line). Requires `--validate-functions`. |
+| `--udf-catalog <path>` | — | YAML file with UDF definitions for arity validation (**W003**). Functions listed are also treated as known (suppresses W002). |
 
 ### Text output (basic — default)
 
@@ -250,14 +251,14 @@ The following table summarises what can and cannot be validated without a live T
 | Validation | Supported | Method |
 |---|---|---|
 | Function existence | ✅ (W002) | Look up against built-in catalog |
-| **Argument count (arity)** | 🔜 Planned (W003) | `FunctionCall.getArguments().size()` |
+| **Argument count (arity)** | ✅ (W003) | `--udf-catalog` + `FunctionCall.getArguments().size()` |
 | Namespace / catalog-specific UDFs | 🔜 Planned | `FunctionCall.getName()` prefix check |
 | Argument types | ❌ Not possible | Requires cluster type inference |
 | Return type | ❌ Not possible | Requires cluster type inference |
 
-#### Future: UDF definition file (planned)
+#### UDF definition file (`--udf-catalog`)
 
-A YAML definition file will allow richer validation such as arity checks:
+A YAML file declares project-specific UDFs with optional arity constraints:
 
 ```yaml
 # udfs.yaml
@@ -271,12 +272,17 @@ functions:
 
   - name: my_variadic_udf
     minArgs: 1             # variable-length: accepts 1 or more arguments
+
+  - name: bounded_udf
+    minArgs: 2
+    maxArgs: 4             # accepts 2 to 4 arguments
 ```
 
-Planned usage:
-
 ```bash
-# Validate against a UDF definition file (arity + existence)
+# Arity validation only (W003)
+analyze --udf-catalog udfs.yaml query.sql
+
+# Arity validation + unknown-function detection (W002 + W003)
 analyze --validate-functions --udf-catalog udfs.yaml query.sql
 
 # Example output when argument count does not match
@@ -289,7 +295,7 @@ analyze --validate-functions --udf-catalog udfs.yaml query.sql
 |---|---|---|
 | `W001` | WARNING | `SELECT *` detected; prefer an explicit column list. |
 | `W002` | WARNING | Function name not found in Trino built-in catalog (requires `--validate-functions`). |
-| `W003` | WARNING | Function call arity does not match the UDF definition (planned). |
+| `W003` | WARNING | Function call arity does not match the UDF definition (requires `--udf-catalog`). |
 | `E001` | ERROR | `DELETE` without a `WHERE` clause will affect all rows. |
 
 ---

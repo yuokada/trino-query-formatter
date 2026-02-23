@@ -48,6 +48,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
@@ -70,6 +71,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.call();
 
@@ -89,6 +91,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.call();
 
@@ -109,6 +112,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.setKnownFunctionsInput("my_etl_transform,another_udf");
         analyze.call();
@@ -128,6 +132,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.setKnownFunctionsInput("known_udf");
         analyze.call();
@@ -156,6 +161,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.setKnownFunctionsInput("@" + udfFile.toString());
         analyze.call();
@@ -201,6 +207,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.call();
 
@@ -220,6 +227,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         analyze.call();
 
@@ -228,8 +236,6 @@ class AnalyzeValidateFunctionsTest {
         assertTrue(out.contains("udf_a"), "udf_a should appear: " + out);
         assertTrue(out.contains("udf_b"), "udf_b should appear: " + out);
         // Two W002 findings expected
-        long w002count = out.chars().filter(c -> c == '2')
-            .count(); // rough check — both appear in output
         assertTrue(out.indexOf("W002") != out.lastIndexOf("W002"),
             "Two W002 findings expected (one per unknown function): " + out);
     }
@@ -244,6 +250,7 @@ class AnalyzeValidateFunctionsTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sql.toString());
         analyze.setFormat("json");
+        analyze.setDetails("full");
         analyze.setValidateFunctions(true);
         int exitCode = analyze.call();
 
