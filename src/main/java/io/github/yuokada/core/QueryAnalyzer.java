@@ -28,6 +28,7 @@ import io.trino.sql.tree.With;
 import io.trino.sql.tree.WithQuery;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
@@ -127,6 +128,32 @@ public final class QueryAnalyzer {
      */
     public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
         String defaultSchema, Set<String> knownFunctions) {
+        return analyze(sql, defaultCatalog, defaultSchema, knownFunctions, null);
+    }
+
+    /**
+     * Performs analysis with optional default catalog/schema, known function names, and a
+     * UDF catalog for arity validation (W003).
+     *
+     * <p>When {@code udfCatalog} is non-null, each function call whose name appears in the
+     * catalog is validated against the declared arity constraints. Mismatches produce W003
+     * lint findings.
+     *
+     * <p>Functions found in the SQL that are neither Trino built-ins nor in
+     * {@code knownFunctions} are recorded as unknown functions in the result,
+     * producing a {@code W002} lint finding for each (when {@code knownFunctions != null}).
+     *
+     * @param sql            SQL statement text
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
+     * @param knownFunctions additional user-defined function names to treat as known (nullable;
+     *                       {@code null} disables W002)
+     * @param udfCatalog     UDF definitions for arity checking (nullable; {@code null} disables
+     *                       W003)
+     * @return analysis result for the statement
+     */
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
+        String defaultSchema, Set<String> knownFunctions, Map<String, UdfDefinition> udfCatalog) {
         Set<String> normalizedKnown = normalizeKnownFunctions(knownFunctions);
         QueryAnalysisResult.Builder b = new QueryAnalysisResult.Builder();
         try {
@@ -144,9 +171,9 @@ public final class QueryAnalyzer {
             if (statement instanceof Delete del) {
                 b.hasWhereOnDelete(del.getWhere().isPresent());
             }
-            // Extended details (including unknown function detection)
+            // Extended details (including unknown function detection and arity checking)
             collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs,
-                normalizedKnown);
+                normalizedKnown, udfCatalog);
             return b.build();
         } catch (RuntimeException e) {
             // Return partial info with parse error message
@@ -218,18 +245,20 @@ public final class QueryAnalyzer {
     /**
      * Collects extended information: CTE names, join descriptors, function usage and write targets.
      * Functions that are neither Trino built-ins nor in {@code knownFunctions} are recorded
-     * as unknown functions in the builder.
+     * as unknown functions in the builder. When {@code udfCatalog} is non-null, arity is checked
+     * against catalog definitions and W003 findings are added on mismatch.
      *
      * @param node           root AST node
      * @param b              result builder to receive findings
      * @param defaultCatalog default catalog (nullable)
      * @param defaultSchema  default schema (nullable)
      * @param catalogs       collected catalog names (for updates during resolution)
-     * @param knownFunctions user-supplied known function names (lowercase, non-null)
+     * @param knownFunctions user-supplied known function names (lowercase; null = W002 disabled)
+     * @param udfCatalog     UDF definitions for arity checking (nullable; null = W003 disabled)
      */
     private static void collectExtendedDetails(Node node, QueryAnalysisResult.Builder b,
         String defaultCatalog, String defaultSchema, Set<String> catalogs,
-        Set<String> knownFunctions) {
+        Set<String> knownFunctions, Map<String, UdfDefinition> udfCatalog) {
         if (node instanceof With with) {
             for (WithQuery wq : with.getQueries()) {
                 b.addCte(wq.getName().getValue());
@@ -248,11 +277,21 @@ public final class QueryAnalyzer {
             } else {
                 b.addFunctionScalar(lower);
             }
-            // knownFunctions == null means validation is disabled; skip unknown-function check.
+            // knownFunctions == null means W002 is disabled; skip unknown-function check.
             if (knownFunctions != null
                 && !TrinoBuiltinFunctions.isBuiltin(lower)
                 && !knownFunctions.contains(lower)) {
                 b.addUnknownFunction(lower);
+            }
+            // udfCatalog == null means W003 is disabled; skip arity check.
+            if (udfCatalog != null && udfCatalog.containsKey(lower)) {
+                UdfDefinition def = udfCatalog.get(lower);
+                if (def.hasArityConstraint()) {
+                    int actualArgs = fc.getArguments().size();
+                    if (!def.isArityValid(actualArgs)) {
+                        b.addArityMismatch(lower, def.expectedArityDescription(), actualArgs);
+                    }
+                }
             }
         } else if (node instanceof Insert ins) {
             QualifiedName qn = ins.getTarget();
@@ -271,7 +310,7 @@ public final class QueryAnalyzer {
         }
         for (Node child : node.getChildren()) {
             collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs,
-                knownFunctions);
+                knownFunctions, udfCatalog);
         }
     }
 

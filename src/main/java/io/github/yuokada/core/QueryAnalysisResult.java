@@ -70,6 +70,10 @@ public final class QueryAnalysisResult {
      * Populated only when UDF validation is enabled.
      */
     private final Set<String> unknownFunctions = new LinkedHashSet<>();
+    /**
+     * Arity mismatch findings (W003). Populated only when a UDF catalog is provided.
+     */
+    private final List<LintFinding> w003Findings = new ArrayList<>();
 
     private QueryAnalysisResult(Builder b) {
         this.queryType = b.queryType;
@@ -86,6 +90,7 @@ public final class QueryAnalysisResult {
         this.functionsWindow.addAll(b.functionsWindow);
         this.writeTargets.addAll(b.writeTargets);
         this.unknownFunctions.addAll(b.unknownFunctions);
+        this.w003Findings.addAll(b.w003Findings);
     }
 
     /**
@@ -197,6 +202,7 @@ public final class QueryAnalysisResult {
      * <ul>
      *   <li>{@code W001} — WARNING: {@code SELECT *} detected; prefer explicit column list.</li>
      *   <li>{@code W002} — WARNING: unknown function detected; may be a custom UDF or typo.</li>
+     *   <li>{@code W003} — WARNING: function arity does not match UDF catalog definition.</li>
      *   <li>{@code E001} — ERROR: {@code DELETE} without {@code WHERE} will affect all rows.</li>
      * </ul>
      *
@@ -212,6 +218,7 @@ public final class QueryAnalysisResult {
             findings.add(new LintFinding("W002", LintFinding.Severity.WARNING,
                 "Unknown function: " + fn + "; may be a custom UDF or typo"));
         }
+        findings.addAll(this.w003Findings);
         if (Boolean.FALSE.equals(this.hasWhereOnDelete)) {
             findings.add(new LintFinding("E001", LintFinding.Severity.ERROR,
                 "DELETE without WHERE clause will affect all rows"));
@@ -356,6 +363,10 @@ public final class QueryAnalysisResult {
          * Unknown function names (not in Trino built-ins or user-declared known functions).
          */
         private final Set<String> unknownFunctions = new LinkedHashSet<>();
+        /**
+         * W003 arity mismatch findings generated when a UDF catalog is provided.
+         */
+        private final List<LintFinding> w003Findings = new ArrayList<>();
 
         /**
          * @param v query type value
@@ -520,6 +531,21 @@ public final class QueryAnalysisResult {
             if (Objects.nonNull(v)) {
                 unknownFunctions.add(v);
             }
+            return this;
+        }
+
+        /**
+         * Adds a W003 arity-mismatch lint finding.
+         *
+         * @param functionName lowercase function name
+         * @param expectedDesc human-readable description of expected arity (e.g. "2", "at least 1")
+         * @param actualArgs   actual number of arguments in the call
+         * @return Builder instance
+         */
+        public Builder addArityMismatch(String functionName, String expectedDesc, int actualArgs) {
+            String msg = "Function " + functionName + " expects " + expectedDesc
+                + " argument(s), got " + actualArgs;
+            w003Findings.add(new LintFinding("W003", LintFinding.Severity.WARNING, msg));
             return this;
         }
 
