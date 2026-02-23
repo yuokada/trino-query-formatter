@@ -28,6 +28,7 @@ import io.trino.sql.tree.With;
 import io.trino.sql.tree.WithQuery;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
@@ -106,6 +107,54 @@ public final class QueryAnalyzer {
      */
     public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
         String defaultSchema) {
+        // Pass null knownFunctions to signal "no UDF validation" — unknown functions are
+        // not collected and no W002 findings are generated.
+        return analyze(sql, defaultCatalog, defaultSchema, null);
+    }
+
+    /**
+     * Performs analysis with optional default catalog/schema and a set of user-defined
+     * known function names.
+     *
+     * <p>Functions found in the SQL that are neither Trino built-ins nor in
+     * {@code knownFunctions} are recorded as unknown functions in the result,
+     * producing a {@code W002} lint finding for each.
+     *
+     * @param sql            SQL statement text
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
+     * @param knownFunctions additional user-defined function names to treat as known (nullable)
+     * @return analysis result for the statement
+     */
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
+        String defaultSchema, Set<String> knownFunctions) {
+        return analyze(sql, defaultCatalog, defaultSchema, knownFunctions, null);
+    }
+
+    /**
+     * Performs analysis with optional default catalog/schema, known function names, and a
+     * UDF catalog for arity validation (W003).
+     *
+     * <p>When {@code udfCatalog} is non-null, each function call whose name appears in the
+     * catalog is validated against the declared arity constraints. Mismatches produce W003
+     * lint findings.
+     *
+     * <p>Functions found in the SQL that are neither Trino built-ins nor in
+     * {@code knownFunctions} are recorded as unknown functions in the result,
+     * producing a {@code W002} lint finding for each (when {@code knownFunctions != null}).
+     *
+     * @param sql            SQL statement text
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
+     * @param knownFunctions additional user-defined function names to treat as known (nullable;
+     *                       {@code null} disables W002)
+     * @param udfCatalog     UDF definitions for arity checking (nullable; {@code null} disables
+     *                       W003)
+     * @return analysis result for the statement
+     */
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
+        String defaultSchema, Set<String> knownFunctions, Map<String, UdfDefinition> udfCatalog) {
+        Set<String> normalizedKnown = normalizeKnownFunctions(knownFunctions);
         QueryAnalysisResult.Builder b = new QueryAnalysisResult.Builder();
         try {
             Statement statement = sqlParser.createStatement(sql);
@@ -122,13 +171,38 @@ public final class QueryAnalyzer {
             if (statement instanceof Delete del) {
                 b.hasWhereOnDelete(del.getWhere().isPresent());
             }
-            // Extended details
-            collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs);
+            // Extended details (including unknown function detection and arity checking)
+            collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs,
+                normalizedKnown, udfCatalog);
             return b.build();
         } catch (RuntimeException e) {
             // Return partial info with parse error message
             return b.queryType("Unknown").parseError(e.getMessage()).build();
         }
+    }
+
+    /**
+     * Normalises a set of user-supplied known function names to lowercase.
+     * Returns {@code null} when {@code knownFunctions} is {@code null},
+     * which signals that UDF validation is disabled.
+     *
+     * @param knownFunctions set of function names (may be null to disable validation)
+     * @return lowercase set, or {@code null} when validation is disabled
+     */
+    private static Set<String> normalizeKnownFunctions(Set<String> knownFunctions) {
+        if (knownFunctions == null) {
+            return null; // null = no validation
+        }
+        if (knownFunctions.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> result = new HashSet<>();
+        for (String fn : knownFunctions) {
+            if (fn != null) {
+                result.add(fn.toLowerCase());
+            }
+        }
+        return result;
     }
 
     /**
@@ -170,15 +244,21 @@ public final class QueryAnalyzer {
 
     /**
      * Collects extended information: CTE names, join descriptors, function usage and write targets.
+     * Functions that are neither Trino built-ins nor in {@code knownFunctions} are recorded
+     * as unknown functions in the builder. When {@code udfCatalog} is non-null, arity is checked
+     * against catalog definitions and W003 findings are added on mismatch.
      *
      * @param node           root AST node
      * @param b              result builder to receive findings
      * @param defaultCatalog default catalog (nullable)
      * @param defaultSchema  default schema (nullable)
      * @param catalogs       collected catalog names (for updates during resolution)
+     * @param knownFunctions user-supplied known function names (lowercase; null = W002 disabled)
+     * @param udfCatalog     UDF definitions for arity checking (nullable; null = W003 disabled)
      */
     private static void collectExtendedDetails(Node node, QueryAnalysisResult.Builder b,
-        String defaultCatalog, String defaultSchema, java.util.Set<String> catalogs) {
+        String defaultCatalog, String defaultSchema, Set<String> catalogs,
+        Set<String> knownFunctions, Map<String, UdfDefinition> udfCatalog) {
         if (node instanceof With with) {
             for (WithQuery wq : with.getQueries()) {
                 b.addCte(wq.getName().getValue());
@@ -188,14 +268,33 @@ public final class QueryAnalyzer {
             String desc = type + ":" + (join.getCriteria().isPresent() ? "on" : "none");
             b.addJoin(desc);
         } else if (node instanceof FunctionCall fc) {
-            String fn = fc.getName().toString();
-            String lower = fn.toLowerCase();
+            // Use the unqualified (last-part) name so that catalog.schema.fn() is treated
+            // the same as fn() for built-in/known-function lookup and arity checking.
+            // QualifiedName.getParts() returns lowercase strings.
+            List<String> nameParts = fc.getName().getParts();
+            String lower = nameParts.get(nameParts.size() - 1);
             if (fc.getWindow().isPresent()) {
                 b.addFunctionWindow(lower);
-            } else if (isAggregateName(lower)) {
+            } else if (TrinoBuiltinFunctions.isAggregate(lower)) {
                 b.addFunctionAggregate(lower);
             } else {
                 b.addFunctionScalar(lower);
+            }
+            // knownFunctions == null means W002 is disabled; skip unknown-function check.
+            if (knownFunctions != null
+                && !TrinoBuiltinFunctions.isBuiltin(lower)
+                && !knownFunctions.contains(lower)) {
+                b.addUnknownFunction(lower);
+            }
+            // udfCatalog == null means W003 is disabled; skip arity check.
+            if (udfCatalog != null) {
+                UdfDefinition def = udfCatalog.get(lower);
+                if (def != null && def.hasArityConstraint()) {
+                    int actualArgs = fc.getArguments().size();
+                    if (!def.isArityValid(actualArgs)) {
+                        b.addArityMismatch(lower, def.expectedArityDescription(), actualArgs);
+                    }
+                }
             }
         } else if (node instanceof Insert ins) {
             QualifiedName qn = ins.getTarget();
@@ -213,20 +312,9 @@ public final class QueryAnalyzer {
             b.addWriteTarget(joined);
         }
         for (Node child : node.getChildren()) {
-            collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs);
+            collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs,
+                knownFunctions, udfCatalog);
         }
-    }
-
-    /**
-     * Checks if a function name is a common aggregate function.
-     *
-     * @param lower function name in lower case
-     * @return true when name is a known aggregate
-     */
-    private static boolean isAggregateName(String lower) {
-        return lower.equals("count") || lower.equals("sum") || lower.equals("avg")
-            || lower.equals("min") || lower.equals("max") || lower.equals("array_agg")
-            || lower.equals("approx_distinct");
     }
 
     /**
@@ -379,7 +467,7 @@ public final class QueryAnalyzer {
             String category;
             if (fc.getWindow().isPresent()) {
                 category = "window";
-            } else if (isAggregateName(fn)) {
+            } else if (TrinoBuiltinFunctions.isAggregate(fn)) {
                 category = "aggregate";
             } else {
                 category = "scalar";

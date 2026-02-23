@@ -5,14 +5,22 @@ import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
+import io.github.yuokada.core.UdfCatalog;
+import io.github.yuokada.core.UdfDefinition;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -21,8 +29,10 @@ import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer> {
+    /** Error message emitted when more than one statement is supplied. */
     private static final String MULTIPLE_STATEMENTS_ERROR_MESSAGE =
         "analyze supports exactly one query; found multiple statements";
+    /** Exit code returned when more than one statement is supplied. */
     private static final int MULTIPLE_STATEMENTS_EXIT_CODE = 1;
 
     /**
@@ -106,6 +116,31 @@ public class Analyze implements Callable<Integer> {
         description = "Maximum AST depth to display. 0 = unlimited.")
     private int astDepth;
 
+    /**
+     * When true, unknown functions (not Trino built-ins) are flagged as W002 lint findings.
+     */
+    @CommandLine.Option(names = {"--validate-functions"}, defaultValue = "false",
+        description = "Flag unknown functions (not Trino built-ins) as W002 lint warnings.")
+    private boolean validateFunctions;
+
+    /**
+     * Comma-separated list of additional known function names, or {@code @<file>} to load from
+     * a UTF-8 text file (one name per line; empty lines and lines starting with '#' are ignored).
+     * Only effective when {@code --validate-functions} is also set.
+     */
+    @CommandLine.Option(names = {"--known-functions"},
+        description = "Extra known function names (comma-separated or @file).")
+    private String knownFunctionsInput;
+
+    /**
+     * Path to a YAML file containing UDF definitions for arity validation (W003).
+     * Functions listed in the catalog are also treated as "known" when
+     * {@code --validate-functions} is enabled, suppressing W002 for them.
+     */
+    @CommandLine.Option(names = {"--udf-catalog"},
+        description = "YAML file with UDF definitions for arity validation (W003).")
+    private String udfCatalogPath;
+
     @Override
     public Integer call() throws IOException {
         AstView view;
@@ -126,6 +161,19 @@ public class Analyze implements Callable<Integer> {
             return ExitCode.OK;
         }
 
+        Map<String, UdfDefinition> udfCatalog = loadUdfCatalog(this.udfCatalogPath);
+
+        // Build the effective known-functions set.
+        // null means W002 is disabled; non-null enables W002 for unrecognized functions.
+        Set<String> effectiveKnown = null;
+        if (this.validateFunctions) {
+            effectiveKnown = parseKnownFunctions(this.knownFunctionsInput);
+            // Functions in the UDF catalog are always treated as known (no W002).
+            if (udfCatalog != null) {
+                effectiveKnown.addAll(udfCatalog.keySet());
+            }
+        }
+
         String statement = statements.get(0);
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
             AnalysisPrinter printer = isJsonFormat()
@@ -134,10 +182,63 @@ public class Analyze implements Callable<Integer> {
                 : new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view,
                     this.astDepth)) {
             QueryAnalysisResult result =
-                QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema);
+                QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema,
+                    effectiveKnown, udfCatalog);
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
+    }
+
+    /**
+     * Loads the UDF catalog from the given YAML file path.
+     *
+     * @param path raw option value (may be null or blank)
+     * @return parsed UDF catalog map, or {@code null} when no path is specified
+     * @throws IOException if the file cannot be read or is not valid YAML
+     */
+    private static Map<String, UdfDefinition> loadUdfCatalog(String path) throws IOException {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        return UdfCatalog.load(Path.of(path));
+    }
+
+    /**
+     * Parses the {@code --known-functions} input into a set of lowercase function names.
+     *
+     * <p>Accepts:
+     * <ul>
+     *   <li>Comma-separated list: {@code "my_udf,another_udf"}</li>
+     *   <li>File reference: {@code "@/path/to/udfs.txt"} — one name per line,
+     *       empty lines and lines starting with {@code #} are ignored.</li>
+     * </ul>
+     *
+     * @param input raw option value (may be null)
+     * @return parsed set of lowercase function names (never null)
+     * @throws IOException if a referenced file cannot be read
+     */
+    private static Set<String> parseKnownFunctions(String input) throws IOException {
+        Set<String> result = new HashSet<>();
+        if (input == null || input.isBlank()) {
+            return result;
+        }
+        if (input.startsWith("@")) {
+            Path filePath = Path.of(input.substring(1));
+            for (String line : Files.readAllLines(filePath, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                    result.add(trimmed.toLowerCase());
+                }
+            }
+        } else {
+            for (String part : input.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    result.add(trimmed.toLowerCase());
+                }
+            }
+        }
+        return result;
     }
 
     private List<String> collectStatements() throws IOException {
@@ -218,5 +319,17 @@ public class Analyze implements Callable<Integer> {
 
     void setAstDepth(int astDepth) {
         this.astDepth = astDepth;
+    }
+
+    void setValidateFunctions(boolean validateFunctions) {
+        this.validateFunctions = validateFunctions;
+    }
+
+    void setKnownFunctionsInput(String knownFunctionsInput) {
+        this.knownFunctionsInput = knownFunctionsInput;
+    }
+
+    void setUdfCatalogPath(String udfCatalogPath) {
+        this.udfCatalogPath = udfCatalogPath;
     }
 }

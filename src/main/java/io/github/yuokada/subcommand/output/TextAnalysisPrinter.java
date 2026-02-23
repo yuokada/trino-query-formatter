@@ -111,6 +111,10 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
                 String.join(",", r.getFunctionsWindow().stream().sorted().toList())
             ));
         }
+        if (!r.getUnknownFunctions().isEmpty()) {
+            emitter.emit(String.format("UnknownFunctions: [%s]",
+                String.join(",", r.getUnknownFunctions().stream().sorted().toList())));
+        }
         if (!r.getWriteTargets().isEmpty()) {
             emitter.emit(
                 String.format("WriteTargets: [%s]",
