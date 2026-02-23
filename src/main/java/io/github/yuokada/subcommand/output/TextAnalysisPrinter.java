@@ -1,5 +1,6 @@
 package io.github.yuokada.subcommand.output;
 
+import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.LintFinding;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
@@ -28,14 +29,29 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
     private final boolean showAst;
 
     /**
+     * AST display mode used when {@link #showAst} is true.
+     */
+    private final AstView astView;
+
+    /**
+     * Maximum AST depth to display; 0 means unlimited.
+     */
+    private final int astDepth;
+
+    /**
      * @param emitter     Output sink.
      * @param fullDetails When true, prints extended info such as tables and flags.
      * @param showAst     When true, also prints AST after each statement.
+     * @param astView     AST display mode (TREE, OUTLINE, RAW).
+     * @param astDepth    Maximum depth to display; 0 = unlimited.
      */
-    public TextAnalysisPrinter(OutputEmitter emitter, boolean fullDetails, boolean showAst) {
+    public TextAnalysisPrinter(OutputEmitter emitter, boolean fullDetails, boolean showAst,
+        AstView astView, int astDepth) {
         this.emitter = emitter;
         this.fullDetails = fullDetails;
         this.showAst = showAst;
+        this.astView = astView;
+        this.astDepth = astDepth;
     }
 
     @Override
@@ -48,8 +64,8 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
             printBasic(result.getCatalogs(), queryId);
         }
         if (showAst) {
-            emitter.emit("AST:");
-            emitter.emit(QueryAnalyzer.dumpAst(originalSql));
+            emitter.emit("AST (" + this.astView.name().toLowerCase() + "):");
+            emitter.emit(QueryAnalyzer.dumpAst(originalSql, this.astView, this.astDepth));
         }
     }
 

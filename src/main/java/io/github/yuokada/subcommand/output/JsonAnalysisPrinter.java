@@ -1,5 +1,6 @@
 package io.github.yuokada.subcommand.output;
 
+import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
 import io.github.yuokada.core.util.JsonUtil;
@@ -31,17 +32,31 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
     private final int astLimit;
 
     /**
+     * AST display mode used when {@link #showAst} is true.
+     */
+    private final AstView astView;
+
+    /**
+     * Maximum AST depth to display; 0 means unlimited.
+     */
+    private final int astDepth;
+
+    /**
      * @param emitter      Output sink.
      * @param basicDetails When true, only emits queryType and catalogs.
      * @param showAst      When true, embeds AST as an additional field.
      * @param astLimit     Maximum length of AST string before truncation.
+     * @param astView      AST display mode (TREE, OUTLINE, RAW).
+     * @param astDepth     Maximum depth to display; 0 = unlimited.
      */
     public JsonAnalysisPrinter(OutputEmitter emitter, boolean basicDetails, boolean showAst,
-        int astLimit) {
+        int astLimit, AstView astView, int astDepth) {
         this.emitter = emitter;
         this.basicDetails = basicDetails;
         this.showAst = showAst;
         this.astLimit = astLimit;
+        this.astView = astView;
+        this.astDepth = astDepth;
     }
 
     @Override
@@ -49,13 +64,15 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
         throws IOException {
         String json;
         if (basicDetails) {
-            String ast =
-                showAst ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql))) : null;
+            String ast = showAst
+                ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql, astView, astDepth)))
+                : null;
             json = buildBasicJson(result, ast);
         } else {
             json = result.toJson();
             if (showAst) {
-                String ast = JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql)));
+                String ast = JsonUtil.escape(
+                    limitAst(QueryAnalyzer.dumpAst(originalSql, astView, astDepth)));
                 if (json.startsWith("{")) {
                     String body = json.substring(1);
                     json = "{\"ast\":\"" + ast + "\"," + body;
