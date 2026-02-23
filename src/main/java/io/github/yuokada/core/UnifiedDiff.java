@@ -56,21 +56,21 @@ public final class UnifiedDiff {
         }
 
         // Pre-compute 1-based original/revised line numbers for each edit position.
-        int[] origLineAt = new int[edits.size()];
-        int[] revLineAt = new int[edits.size()];
-        int ol = 1;
-        int rl = 1;
+        int[] originalLineNumber = new int[edits.size()];
+        int[] revisedLineNumber = new int[edits.size()];
+        int originalLineCounter = 1;
+        int revisedLineCounter = 1;
         for (int i = 0; i < edits.size(); i++) {
-            origLineAt[i] = ol;
-            revLineAt[i] = rl;
+            originalLineNumber[i] = originalLineCounter;
+            revisedLineNumber[i] = revisedLineCounter;
             int k = edits.get(i).kind;
             if (k == 0) {
-                ol++;
-                rl++;
+                originalLineCounter++;
+                revisedLineCounter++;
             } else if (k == -1) {
-                ol++;
+                originalLineCounter++;
             } else {
-                rl++;
+                revisedLineCounter++;
             }
         }
 
@@ -90,21 +90,22 @@ public final class UnifiedDiff {
             int end = range[1];
             List<Edit> hunk = edits.subList(start, end + 1);
 
-            int oStart = origLineAt[start];
-            int rStart = revLineAt[start];
-            int oCount = 0;
-            int rCount = 0;
+            int originalStartLine = originalLineNumber[start];
+            int revisedStartLine = revisedLineNumber[start];
+            int originalLineCount = 0;
+            int revisedLineCount = 0;
             for (Edit e : hunk) {
                 if (e.kind == 0 || e.kind == -1) {
-                    oCount++;
+                    originalLineCount++;
                 }
                 if (e.kind == 0 || e.kind == 1) {
-                    rCount++;
+                    revisedLineCount++;
                 }
             }
 
             String hunkHeader =
-                "@@ -" + oStart + "," + oCount + " +" + rStart + "," + rCount + " @@";
+                "@@ -" + originalStartLine + "," + originalLineCount
+                    + " +" + revisedStartLine + "," + revisedLineCount + " @@";
             if (colorize) {
                 sb.append(ANSI_CYAN).append(hunkHeader).append(ANSI_RESET).append('\n');
             } else {
@@ -146,17 +147,17 @@ public final class UnifiedDiff {
             return List.of();
         }
         List<int[]> ranges = new ArrayList<>();
-        for (int ci : changes) {
-            int s = Math.max(0, ci - ctx);
-            int e = Math.min(edits.size() - 1, ci + ctx);
+        for (int changeIndex : changes) {
+            int startHunkIndex = Math.max(0, changeIndex - ctx);
+            int endHunkIndex = Math.min(edits.size() - 1, changeIndex + ctx);
             if (!ranges.isEmpty()) {
                 int[] last = ranges.get(ranges.size() - 1);
-                if (s <= last[1] + 1) {
-                    last[1] = Math.max(last[1], e);
+                if (startHunkIndex <= last[1] + 1) {
+                    last[1] = Math.max(last[1], endHunkIndex);
                     continue;
                 }
             }
-            ranges.add(new int[]{s, e});
+            ranges.add(new int[]{startHunkIndex, endHunkIndex});
         }
         return ranges;
     }
@@ -171,11 +172,11 @@ public final class UnifiedDiff {
      * @return ordered list of edits describing the transformation from {@code a} to {@code b}
      */
     private static List<Edit> buildEdits(List<String> a, List<String> b) {
-        int n = a.size();
-        int m = b.size();
-        int[][] dp = new int[n + 1][m + 1];
-        for (int i = 1; i <= n; i++) {
-            for (int j = 1; j <= m; j++) {
+        int originalSize = a.size();
+        int revisedSize = b.size();
+        int[][] dp = new int[originalSize + 1][revisedSize + 1];
+        for (int i = 1; i <= originalSize; i++) {
+            for (int j = 1; j <= revisedSize; j++) {
                 if (a.get(i - 1).equals(b.get(j - 1))) {
                     dp[i][j] = dp[i - 1][j - 1] + 1;
                 } else {
@@ -184,19 +185,22 @@ public final class UnifiedDiff {
             }
         }
         List<Edit> result = new ArrayList<>();
-        int i = n;
-        int j = m;
-        while (i > 0 || j > 0) {
-            if (i > 0 && j > 0 && a.get(i - 1).equals(b.get(j - 1))) {
-                result.add(new Edit(0, a.get(i - 1)));
-                i--;
-                j--;
-            } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-                result.add(new Edit(1, b.get(j - 1)));
-                j--;
+        int originalIndex = originalSize;
+        int revisedIndex = revisedSize;
+        while (originalIndex > 0 || revisedIndex > 0) {
+            if (originalIndex > 0 && revisedIndex > 0
+                && a.get(originalIndex - 1).equals(b.get(revisedIndex - 1))) {
+                result.add(new Edit(0, a.get(originalIndex - 1)));
+                originalIndex--;
+                revisedIndex--;
+            } else if (revisedIndex > 0
+                && (originalIndex == 0
+                    || dp[originalIndex][revisedIndex - 1] >= dp[originalIndex - 1][revisedIndex])) {
+                result.add(new Edit(1, b.get(revisedIndex - 1)));
+                revisedIndex--;
             } else {
-                result.add(new Edit(-1, a.get(i - 1)));
-                i--;
+                result.add(new Edit(-1, a.get(originalIndex - 1)));
+                originalIndex--;
             }
         }
         Collections.reverse(result);
