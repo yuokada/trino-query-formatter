@@ -2,10 +2,13 @@ package io.github.yuokada.subcommand;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.yuokada.core.ExitCodes;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
@@ -73,6 +76,91 @@ class FormatTest {
         }
 
         assertThrows(Exception.class, format::call);
+    }
+
+    @Test
+    void testCheckMode_alreadyFormatted(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("formatted.sql");
+        // Write content that matches the formatter's output exactly
+        String alreadyFormatted = "SELECT *\nFROM\n  foo\n;";
+        Files.writeString(sqlFile, alreadyFormatted);
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setCheck(true);
+        int exitCode = format.call();
+
+        assertEquals(ExitCodes.OK, exitCode, "Already-formatted SQL should exit OK");
+    }
+
+    @Test
+    void testCheckMode_needsReformat(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("unformatted.sql");
+        Files.writeString(sqlFile, "select * from foo;");
+
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        System.setErr(new PrintStream(errContent));
+        try {
+            Format format = new Format();
+            format.setSqlFile(sqlFile.toString());
+            format.setCheck(true);
+            int exitCode = format.call();
+
+            assertEquals(ExitCodes.WARNING, exitCode, "Unformatted SQL should exit WARNING");
+            assertTrue(errContent.toString().contains("Would reformat"),
+                "Should print 'Would reformat' to stderr");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    void testOutputOption(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("input.sql");
+        Path outFile = tempDir.resolve("output.sql");
+        Files.writeString(sqlFile, "select * from foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.setOutputPath(outFile.toString());
+        format.call();
+
+        // stdout should be empty
+        assertEquals("", outContent.toString().trim(), "Nothing should be written to stdout");
+
+        // output file should contain formatted SQL
+        String output = Files.readString(outFile, StandardCharsets.UTF_8).trim();
+        String expected = "SELECT *\nFROM\n  foo\n;".trim();
+        assertEquals(expected, output);
+    }
+
+    @Test
+    void testCommentPreservation_lineComment(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("comment.sql");
+        Files.writeString(sqlFile, "SELECT -- my comment\nid FROM foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.call();
+
+        String output = outContent.toString().trim();
+        assertTrue(output.contains("-- my comment"),
+            "Trailing line comment should be preserved in output: " + output);
+    }
+
+    @Test
+    void testCommentPreservation_leadingBlockComment(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("block_comment.sql");
+        Files.writeString(sqlFile, "/* copyright */\nSELECT id FROM foo;");
+
+        Format format = new Format();
+        format.setSqlFile(sqlFile.toString());
+        format.call();
+
+        String output = outContent.toString().trim();
+        assertTrue(output.contains("/* copyright */"),
+            "Leading block comment should be preserved in output: " + output);
     }
 
     @Test
