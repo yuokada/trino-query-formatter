@@ -65,6 +65,11 @@ public final class QueryAnalysisResult {
      * Write target names such as INSERT/CREATE TABLE targets.
      */
     private final Set<String> writeTargets = new LinkedHashSet<>();
+    /**
+     * Function names that are neither Trino built-ins nor user-declared known functions.
+     * Populated only when UDF validation is enabled.
+     */
+    private final Set<String> unknownFunctions = new LinkedHashSet<>();
 
     private QueryAnalysisResult(Builder b) {
         this.queryType = b.queryType;
@@ -80,6 +85,7 @@ public final class QueryAnalysisResult {
         this.functionsAggregate.addAll(b.functionsAggregate);
         this.functionsWindow.addAll(b.functionsWindow);
         this.writeTargets.addAll(b.writeTargets);
+        this.unknownFunctions.addAll(b.unknownFunctions);
     }
 
     /**
@@ -174,11 +180,23 @@ public final class QueryAnalysisResult {
     }
 
     /**
+     * Returns function names that could not be matched to any Trino built-in or
+     * user-declared known function. Non-empty only when UDF validation is enabled
+     * (i.e., {@code --validate-functions} was passed to the analyze subcommand).
+     *
+     * @return unmodifiable set of unknown function names (lowercase)
+     */
+    public Set<String> getUnknownFunctions() {
+        return Collections.unmodifiableSet(unknownFunctions);
+    }
+
+    /**
      * Returns lint findings derived from this analysis result.
      *
      * <p>Current rules:
      * <ul>
      *   <li>{@code W001} — WARNING: {@code SELECT *} detected; prefer explicit column list.</li>
+     *   <li>{@code W002} — WARNING: unknown function detected; may be a custom UDF or typo.</li>
      *   <li>{@code E001} — ERROR: {@code DELETE} without {@code WHERE} will affect all rows.</li>
      * </ul>
      *
@@ -189,6 +207,10 @@ public final class QueryAnalysisResult {
         if (this.usesSelectStar) {
             findings.add(new LintFinding("W001", LintFinding.Severity.WARNING,
                 "SELECT * detected; prefer explicit column list"));
+        }
+        for (String fn : this.unknownFunctions) {
+            findings.add(new LintFinding("W002", LintFinding.Severity.WARNING,
+                "Unknown function: " + fn + "; may be a custom UDF or typo"));
         }
         if (Boolean.FALSE.equals(this.hasWhereOnDelete)) {
             findings.add(new LintFinding("E001", LintFinding.Severity.ERROR,
@@ -215,6 +237,7 @@ public final class QueryAnalysisResult {
         appendArray(sb, "functionsAggregate", functionsAggregate);
         appendArray(sb, "functionsWindow", functionsWindow);
         appendArray(sb, "writeTargets", writeTargets);
+        appendArray(sb, "unknownFunctions", unknownFunctions);
         appendFindingsArray(sb, getFindings());
         if (hasLimit != null) {
             appendField(sb, "hasLimit", Boolean.toString(hasLimit), false);
@@ -329,6 +352,10 @@ public final class QueryAnalysisResult {
          * Write targets.
          */
         private final Set<String> writeTargets = new LinkedHashSet<>();
+        /**
+         * Unknown function names (not in Trino built-ins or user-declared known functions).
+         */
+        private final Set<String> unknownFunctions = new LinkedHashSet<>();
 
         /**
          * @param v query type value
@@ -481,6 +508,17 @@ public final class QueryAnalysisResult {
         public Builder addWriteTarget(String v) {
             if (Objects.nonNull(v)) {
                 writeTargets.add(v);
+            }
+            return this;
+        }
+
+        /**
+         * @param v unknown function name to add (lowercase)
+         * @return Builder instance
+         */
+        public Builder addUnknownFunction(String v) {
+            if (Objects.nonNull(v)) {
+                unknownFunctions.add(v);
             }
             return this;
         }

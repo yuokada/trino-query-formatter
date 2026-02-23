@@ -106,6 +106,28 @@ public final class QueryAnalyzer {
      */
     public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
         String defaultSchema) {
+        // Pass null knownFunctions to signal "no UDF validation" — unknown functions are
+        // not collected and no W002 findings are generated.
+        return analyze(sql, defaultCatalog, defaultSchema, null);
+    }
+
+    /**
+     * Performs analysis with optional default catalog/schema and a set of user-defined
+     * known function names.
+     *
+     * <p>Functions found in the SQL that are neither Trino built-ins nor in
+     * {@code knownFunctions} are recorded as unknown functions in the result,
+     * producing a {@code W002} lint finding for each.
+     *
+     * @param sql            SQL statement text
+     * @param defaultCatalog default catalog for un/partially qualified names (nullable)
+     * @param defaultSchema  default schema for unqualified names (nullable)
+     * @param knownFunctions additional user-defined function names to treat as known (nullable)
+     * @return analysis result for the statement
+     */
+    public static QueryAnalysisResult analyze(String sql, String defaultCatalog,
+        String defaultSchema, Set<String> knownFunctions) {
+        Set<String> normalizedKnown = normalizeKnownFunctions(knownFunctions);
         QueryAnalysisResult.Builder b = new QueryAnalysisResult.Builder();
         try {
             Statement statement = sqlParser.createStatement(sql);
@@ -122,13 +144,38 @@ public final class QueryAnalyzer {
             if (statement instanceof Delete del) {
                 b.hasWhereOnDelete(del.getWhere().isPresent());
             }
-            // Extended details
-            collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs);
+            // Extended details (including unknown function detection)
+            collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs,
+                normalizedKnown);
             return b.build();
         } catch (RuntimeException e) {
             // Return partial info with parse error message
             return b.queryType("Unknown").parseError(e.getMessage()).build();
         }
+    }
+
+    /**
+     * Normalises a set of user-supplied known function names to lowercase.
+     * Returns {@code null} when {@code knownFunctions} is {@code null},
+     * which signals that UDF validation is disabled.
+     *
+     * @param knownFunctions set of function names (may be null to disable validation)
+     * @return lowercase set, or {@code null} when validation is disabled
+     */
+    private static Set<String> normalizeKnownFunctions(Set<String> knownFunctions) {
+        if (knownFunctions == null) {
+            return null; // null = no validation
+        }
+        if (knownFunctions.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> result = new HashSet<>();
+        for (String fn : knownFunctions) {
+            if (fn != null) {
+                result.add(fn.toLowerCase());
+            }
+        }
+        return result;
     }
 
     /**
@@ -170,15 +217,19 @@ public final class QueryAnalyzer {
 
     /**
      * Collects extended information: CTE names, join descriptors, function usage and write targets.
+     * Functions that are neither Trino built-ins nor in {@code knownFunctions} are recorded
+     * as unknown functions in the builder.
      *
      * @param node           root AST node
      * @param b              result builder to receive findings
      * @param defaultCatalog default catalog (nullable)
      * @param defaultSchema  default schema (nullable)
      * @param catalogs       collected catalog names (for updates during resolution)
+     * @param knownFunctions user-supplied known function names (lowercase, non-null)
      */
     private static void collectExtendedDetails(Node node, QueryAnalysisResult.Builder b,
-        String defaultCatalog, String defaultSchema, java.util.Set<String> catalogs) {
+        String defaultCatalog, String defaultSchema, Set<String> catalogs,
+        Set<String> knownFunctions) {
         if (node instanceof With with) {
             for (WithQuery wq : with.getQueries()) {
                 b.addCte(wq.getName().getValue());
@@ -192,10 +243,16 @@ public final class QueryAnalyzer {
             String lower = fn.toLowerCase();
             if (fc.getWindow().isPresent()) {
                 b.addFunctionWindow(lower);
-            } else if (isAggregateName(lower)) {
+            } else if (TrinoBuiltinFunctions.isAggregate(lower)) {
                 b.addFunctionAggregate(lower);
             } else {
                 b.addFunctionScalar(lower);
+            }
+            // knownFunctions == null means validation is disabled; skip unknown-function check.
+            if (knownFunctions != null
+                && !TrinoBuiltinFunctions.isBuiltin(lower)
+                && !knownFunctions.contains(lower)) {
+                b.addUnknownFunction(lower);
             }
         } else if (node instanceof Insert ins) {
             QualifiedName qn = ins.getTarget();
@@ -213,20 +270,9 @@ public final class QueryAnalyzer {
             b.addWriteTarget(joined);
         }
         for (Node child : node.getChildren()) {
-            collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs);
+            collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs,
+                knownFunctions);
         }
-    }
-
-    /**
-     * Checks if a function name is a common aggregate function.
-     *
-     * @param lower function name in lower case
-     * @return true when name is a known aggregate
-     */
-    private static boolean isAggregateName(String lower) {
-        return lower.equals("count") || lower.equals("sum") || lower.equals("avg")
-            || lower.equals("min") || lower.equals("max") || lower.equals("array_agg")
-            || lower.equals("approx_distinct");
     }
 
     /**
@@ -379,7 +425,7 @@ public final class QueryAnalyzer {
             String category;
             if (fc.getWindow().isPresent()) {
                 category = "window";
-            } else if (isAggregateName(fn)) {
+            } else if (TrinoBuiltinFunctions.isAggregate(fn)) {
                 category = "aggregate";
             } else {
                 category = "scalar";

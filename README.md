@@ -36,6 +36,7 @@ format [options] [<file>]
 | `<file>` | stdin | SQL file to format. Use `-` to read from stdin explicitly. |
 | `-o, --output <path>` | stdout | Write formatted output to this file instead of stdout. |
 | `--check` | false | Check if the file is already formatted. Exits `1` when reformatting is needed. Not supported for stdin. |
+| `--diff` | false | Print a unified diff of formatting changes. Exits `1` when differences are found. Not supported for stdin. Color auto-detected via terminal. |
 | `--keyword-case <mode>` | `upper` | Keyword case: `upper` (default), `lower`, or `keep` (preserve original casing). |
 | `--indent-size <n>` | `2` | Spaces per indentation level. Must be ≥ 1. |
 | `--max-line-length <n>` | `0` | Warn to stderr when a formatted line exceeds this length. `0` = unlimited. |
@@ -122,6 +123,14 @@ echo "select * from foo;" | format -
 cat *.sql | format -
 ```
 
+### Diff mode
+
+```bash
+format --diff query.sql
+# Prints a unified diff (like `git diff`) between the current file and its formatted version.
+# Exit 0 if already formatted, exit 1 if reformatting would change the file.
+```
+
 ### Regenerate golden test snapshots
 
 ```bash
@@ -148,9 +157,13 @@ analyze [options] [<file>]
 | `--details <level>` | `basic` | Detail level: `basic` (catalogs only) or `full` (all fields + lint). |
 | `--output <path>` | stdout | Write output to this file instead of stdout. |
 | `--show-ast` | false | Print the AST for the query. |
+| `--ast-view <mode>` | `tree` | AST display mode: `tree` (enriched), `outline` (clause summary), `raw` (class names). |
+| `--ast-depth <n>` | `0` | Maximum AST depth to display. `0` = unlimited. |
 | `--ast-limit <n>` | `10000` | Maximum characters for the embedded AST in JSON output. |
 | `--catalog <name>` | — | Default catalog for partially qualified names (`schema.table`). |
 | `--schema <name>` | — | Default schema for unqualified names (`table`), requires `--catalog`. |
+| `--validate-functions` | false | Flag functions that are not Trino built-ins as **W002** lint warnings. |
+| `--known-functions <list\|@file>` | — | Comma-separated list of additional known function names, or `@path` to a text file (one name per line). Requires `--validate-functions`. |
 
 ### Text output (basic — default)
 
@@ -202,11 +215,40 @@ analyze --catalog my_catalog --details full query.sql
 analyze --catalog my_catalog --schema my_schema --details full query.sql
 ```
 
+### UDF / function validation
+
+When `--validate-functions` is passed, each function call is looked up against the Trino 435
+built-in function catalog. Functions not found there produce a `W002` lint warning.
+Use `--known-functions` to declare project-specific UDFs so they are not flagged.
+
+```bash
+# Flag unknown functions
+analyze --validate-functions --details full query.sql
+
+# Suppress warnings for known UDFs
+analyze --validate-functions --known-functions "my_etl_transform,date_to_epoch" query.sql
+
+# Load UDF list from file (one name per line, # comments ignored)
+analyze --validate-functions --known-functions @udfs.txt query.sql
+```
+
+Example output with an unknown function:
+```
+=========================
+Catalogs: [catalog1]
+QueryType: Query
+Tables: [catalog1.s.t]
+Functions: scalar=[my_etl_transform,upper], aggregate=[count], window=[]
+UnknownFunctions: [my_etl_transform]
+Lint: [WARNING] W002: Unknown function: my_etl_transform; may be a custom UDF or typo
+```
+
 ### Lint rules
 
 | Rule | Severity | Trigger |
 |---|---|---|
 | `W001` | WARNING | `SELECT *` detected; prefer an explicit column list. |
+| `W002` | WARNING | Function name not found in Trino built-in catalog (requires `--validate-functions`). |
 | `E001` | ERROR | `DELETE` without a `WHERE` clause will affect all rows. |
 
 ---

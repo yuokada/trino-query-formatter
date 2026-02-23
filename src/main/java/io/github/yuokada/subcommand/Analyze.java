@@ -11,8 +11,12 @@ import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -21,8 +25,10 @@ import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer> {
+    /** Error message emitted when more than one statement is supplied. */
     private static final String MULTIPLE_STATEMENTS_ERROR_MESSAGE =
         "analyze supports exactly one query; found multiple statements";
+    /** Exit code returned when more than one statement is supplied. */
     private static final int MULTIPLE_STATEMENTS_EXIT_CODE = 1;
 
     /**
@@ -106,6 +112,22 @@ public class Analyze implements Callable<Integer> {
         description = "Maximum AST depth to display. 0 = unlimited.")
     private int astDepth;
 
+    /**
+     * When true, unknown functions (not Trino built-ins) are flagged as W002 lint findings.
+     */
+    @CommandLine.Option(names = {"--validate-functions"}, defaultValue = "false",
+        description = "Flag unknown functions (not Trino built-ins) as W002 lint warnings.")
+    private boolean validateFunctions;
+
+    /**
+     * Comma-separated list of additional known function names, or {@code @<file>} to load from
+     * a UTF-8 text file (one name per line; empty lines and lines starting with '#' are ignored).
+     * Only effective when {@code --validate-functions} is also set.
+     */
+    @CommandLine.Option(names = {"--known-functions"},
+        description = "Extra known function names (comma-separated or @file).")
+    private String knownFunctionsInput;
+
     @Override
     public Integer call() throws IOException {
         AstView view;
@@ -126,6 +148,8 @@ public class Analyze implements Callable<Integer> {
             return ExitCode.OK;
         }
 
+        Set<String> knownFunctions = parseKnownFunctions(this.knownFunctionsInput);
+
         String statement = statements.get(0);
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
             AnalysisPrinter printer = isJsonFormat()
@@ -133,11 +157,50 @@ public class Analyze implements Callable<Integer> {
                     view, this.astDepth)
                 : new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view,
                     this.astDepth)) {
-            QueryAnalysisResult result =
-                QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema);
+            QueryAnalysisResult result = this.validateFunctions
+                ? QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema, knownFunctions)
+                : QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema);
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
+    }
+
+    /**
+     * Parses the {@code --known-functions} input into a set of lowercase function names.
+     *
+     * <p>Accepts:
+     * <ul>
+     *   <li>Comma-separated list: {@code "my_udf,another_udf"}</li>
+     *   <li>File reference: {@code "@/path/to/udfs.txt"} — one name per line,
+     *       empty lines and lines starting with {@code #} are ignored.</li>
+     * </ul>
+     *
+     * @param input raw option value (may be null)
+     * @return parsed set of lowercase function names (never null)
+     * @throws IOException if a referenced file cannot be read
+     */
+    private static Set<String> parseKnownFunctions(String input) throws IOException {
+        Set<String> result = new HashSet<>();
+        if (input == null || input.isBlank()) {
+            return result;
+        }
+        if (input.startsWith("@")) {
+            Path filePath = Path.of(input.substring(1));
+            for (String line : Files.readAllLines(filePath)) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                    result.add(trimmed.toLowerCase());
+                }
+            }
+        } else {
+            for (String part : input.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    result.add(trimmed.toLowerCase());
+                }
+            }
+        }
+        return result;
     }
 
     private List<String> collectStatements() throws IOException {
@@ -218,5 +281,13 @@ public class Analyze implements Callable<Integer> {
 
     void setAstDepth(int astDepth) {
         this.astDepth = astDepth;
+    }
+
+    void setValidateFunctions(boolean validateFunctions) {
+        this.validateFunctions = validateFunctions;
+    }
+
+    void setKnownFunctionsInput(String knownFunctionsInput) {
+        this.knownFunctionsInput = knownFunctionsInput;
     }
 }
