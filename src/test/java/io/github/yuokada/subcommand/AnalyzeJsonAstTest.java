@@ -89,7 +89,7 @@ class AnalyzeJsonAstTest {
 
         String out = outContent.toString(StandardCharsets.UTF_8);
         assertTrue(out.contains("Catalogs:"));
-        assertTrue(out.contains("AST:"));
+        assertTrue(out.contains("AST ("), "AST section header should appear: " + out);
     }
 
     @Test
@@ -150,6 +150,116 @@ class AnalyzeJsonAstTest {
         String fullOut = outContent.toString(StandardCharsets.UTF_8).strip();
         assertTrue(fullOut.contains("usesSelectStar"));
         assertTrue(fullOut.contains("tables"));
+    }
+
+    @Test
+    void testAstView_tree(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("tree.sql");
+        Files.writeString(sqlFile, "SELECT id FROM catalog1.s.t WHERE id = 1;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setShowAst();
+        analyze.setAstView("tree");
+        analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("AST (tree):"), "Tree header should appear: " + out);
+        // TREE mode enriches Join/FunctionCall with attributes
+        assertTrue(out.contains("Table[name=catalog1.s.t]"), "Table name should appear: " + out);
+    }
+
+    @Test
+    void testAstView_outline(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("outline.sql");
+        Files.writeString(sqlFile,
+            "SELECT id, name FROM catalog1.s.orders WHERE id > 1 LIMIT 10;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setShowAst();
+        analyze.setAstView("outline");
+        analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("AST (outline):"), "Outline header should appear: " + out);
+        assertTrue(out.contains("SELECT:"), "SELECT clause should appear: " + out);
+        assertTrue(out.contains("TABLE:"), "TABLE should appear: " + out);
+        assertTrue(out.contains("WHERE:"), "WHERE clause should appear: " + out);
+        assertTrue(out.contains("LIMIT"), "LIMIT should appear: " + out);
+    }
+
+    @Test
+    void testAstView_raw_backwardsCompat(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("raw.sql");
+        Files.writeString(sqlFile, "SELECT * FROM catalog1.s.t;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setShowAst();
+        analyze.setAstView("raw");
+        analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("AST (raw):"), "Raw header should appear: " + out);
+        // RAW mode shows class names (same as original behaviour)
+        assertTrue(out.contains("Query"), "Query node should appear: " + out);
+    }
+
+    @Test
+    void testAstView_invalidValue(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("invalid.sql");
+        Files.writeString(sqlFile, "SELECT 1;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setShowAst();
+        analyze.setAstView("badview");
+        int exitCode = analyze.call();
+
+        assertEquals(2, exitCode, "Invalid --ast-view should exit ERROR (2)");
+        assertTrue(errContent.toString().contains("Invalid --ast-view"),
+            "Error message should be on stderr: " + errContent);
+    }
+
+    @Test
+    void testAstDepth_limits_output(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("depth.sql");
+        // A nested query will produce many levels; depth=2 should truncate
+        Files.writeString(sqlFile,
+            "SELECT id FROM (SELECT id FROM catalog1.s.t) sub WHERE id > 0;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setShowAst();
+        analyze.setAstView("tree");
+        analyze.setAstDepth(2);
+        analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("..."), "Truncation marker should appear with depth limit: " + out);
+    }
+
+    @Test
+    void testAstView_outline_withCte(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("cte.sql");
+        Files.writeString(sqlFile,
+            "WITH cte AS (SELECT id FROM base) SELECT id FROM cte;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setShowAst();
+        analyze.setAstView("outline");
+        analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("WITH: cte"), "WITH clause with CTE name should appear: " + out);
+        assertTrue(out.contains("SELECT:"), "SELECT clause should appear: " + out);
     }
 
     @Test

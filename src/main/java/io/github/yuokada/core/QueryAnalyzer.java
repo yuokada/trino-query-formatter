@@ -15,9 +15,11 @@ import io.trino.sql.tree.FunctionCall;
 import io.trino.sql.tree.Insert;
 import io.trino.sql.tree.Join;
 import io.trino.sql.tree.Limit;
+import io.trino.sql.tree.LongLiteral;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.Query;
+import io.trino.sql.tree.QuerySpecification;
 import io.trino.sql.tree.ShowCatalogs;
 import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
@@ -25,6 +27,7 @@ import io.trino.sql.tree.Update;
 import io.trino.sql.tree.With;
 import io.trino.sql.tree.WithQuery;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
@@ -275,48 +278,194 @@ public final class QueryAnalyzer {
 
     /**
      * Builds a simple string representation of the AST with indentation.
-     * Intended for debugging and --show-ast output.
+     * Uses {@link AstView#RAW} mode with no depth limit for backward compatibility.
      *
      * @param sql SQL statement text
-     * @return Multi-line string describing node classes and key identifiers
+     * @return multi-line string describing node classes and key identifiers
      */
     public static String dumpAst(String sql) {
+        return dumpAst(sql, AstView.RAW, 0);
+    }
+
+    /**
+     * Builds a string representation of the AST using the specified view mode and depth limit.
+     *
+     * @param sql      SQL statement text
+     * @param view     display mode (TREE, OUTLINE, or RAW)
+     * @param maxDepth maximum depth to display; 0 means unlimited
+     * @return multi-line string representing the AST
+     */
+    public static String dumpAst(String sql, AstView view, int maxDepth) {
         Statement statement = sqlParser.createStatement(sql);
         StringBuilder sb = new StringBuilder();
-        dumpNodeRecursive(statement, sb, 0);
+        if (view == AstView.OUTLINE) {
+            outlineRecurse(statement, sb, 0, maxDepth);
+        } else if (view == AstView.TREE) {
+            treeRecurse(statement, sb, 0, maxDepth);
+        } else {
+            rawRecurse(statement, sb, 0, maxDepth);
+        }
         return sb.toString();
     }
 
-    private static void dumpNodeRecursive(Node node, StringBuilder sb, int depth) {
+    // --- RAW mode (original class-name tree) ---
+
+    private static void rawRecurse(Node node, StringBuilder sb, int depth, int maxDepth) {
+        if (maxDepth > 0 && depth >= maxDepth) {
+            indent(sb, depth);
+            sb.append("...\n");
+            return;
+        }
         indent(sb, depth);
         sb.append(node.getClass().getSimpleName());
-        if (node instanceof Table t) {
-            QualifiedName qn = t.getName();
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
-            sb.append("[name=").append(joined).append("]");
-        } else if (node instanceof Insert ins) {
-            QualifiedName qn = ins.getTarget();
-            if (qn != null) {
-                String joined = String.join(".",
-                    qn.getOriginalParts().stream().map(Object::toString).toList());
-                sb.append("[target=").append(joined).append("]");
-            }
-        } else if (node instanceof CreateTable ct) {
-            QualifiedName qn = ct.getName();
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
-            sb.append("[name=").append(joined).append("]");
-        } else if (node instanceof CreateTableAsSelect ctas) {
-            QualifiedName qn = ctas.getName();
-            String joined = String.join(".",
-                qn.getOriginalParts().stream().map(Object::toString).toList());
-            sb.append("[name=").append(joined).append("]");
-        }
+        appendRawAttributes(node, sb);
         sb.append('\n');
         for (Node child : node.getChildren()) {
-            dumpNodeRecursive(child, sb, depth + 1);
+            rawRecurse(child, sb, depth + 1, maxDepth);
         }
+    }
+
+    private static void appendRawAttributes(Node node, StringBuilder sb) {
+        if (node instanceof Table t) {
+            sb.append("[name=").append(qualifiedNameStr(t.getName())).append("]");
+        } else if (node instanceof Insert ins && ins.getTarget() != null) {
+            sb.append("[target=").append(qualifiedNameStr(ins.getTarget())).append("]");
+        } else if (node instanceof CreateTable ct) {
+            sb.append("[name=").append(qualifiedNameStr(ct.getName())).append("]");
+        } else if (node instanceof CreateTableAsSelect ctas) {
+            sb.append("[name=").append(qualifiedNameStr(ctas.getName())).append("]");
+        }
+    }
+
+    // --- TREE mode (enriched attributes) ---
+
+    private static void treeRecurse(Node node, StringBuilder sb, int depth, int maxDepth) {
+        if (maxDepth > 0 && depth >= maxDepth) {
+            indent(sb, depth);
+            sb.append("...\n");
+            return;
+        }
+        indent(sb, depth);
+        sb.append(node.getClass().getSimpleName());
+        appendTreeAttributes(node, sb);
+        sb.append('\n');
+        for (Node child : node.getChildren()) {
+            treeRecurse(child, sb, depth + 1, maxDepth);
+        }
+    }
+
+    private static void appendTreeAttributes(Node node, StringBuilder sb) {
+        if (node instanceof Table t) {
+            sb.append("[name=").append(qualifiedNameStr(t.getName())).append("]");
+        } else if (node instanceof Insert ins && ins.getTarget() != null) {
+            sb.append("[target=").append(qualifiedNameStr(ins.getTarget())).append("]");
+        } else if (node instanceof CreateTable ct) {
+            sb.append("[name=").append(qualifiedNameStr(ct.getName())).append("]");
+        } else if (node instanceof CreateTableAsSelect ctas) {
+            sb.append("[name=").append(qualifiedNameStr(ctas.getName())).append("]");
+        } else if (node instanceof Join join) {
+            String criteria = join.getCriteria().isPresent() ? "on" : "none";
+            sb.append("[type=").append(join.getType().name())
+                .append(",criteria=").append(criteria).append("]");
+        } else if (node instanceof WithQuery wq) {
+            sb.append("[name=").append(wq.getName().getValue()).append("]");
+        } else if (node instanceof Limit lim) {
+            Node rc = lim.getRowCount();
+            if (rc instanceof LongLiteral ll) {
+                sb.append("[rows=").append(ll.getParsedValue()).append("]");
+            }
+        } else if (node instanceof FunctionCall fc) {
+            String fn = fc.getName().toString().toLowerCase();
+            String category;
+            if (fc.getWindow().isPresent()) {
+                category = "window";
+            } else if (isAggregateName(fn)) {
+                category = "aggregate";
+            } else {
+                category = "scalar";
+            }
+            sb.append("[name=").append(fn).append(",category=").append(category).append("]");
+        }
+    }
+
+    // --- OUTLINE mode (clause-focused summary) ---
+
+    private static void outlineRecurse(Node node, StringBuilder sb, int depth, int maxDepth) {
+        if (maxDepth > 0 && depth >= maxDepth) {
+            indent(sb, depth);
+            sb.append("...\n");
+            return;
+        }
+        if (node instanceof QuerySpecification qs) {
+            emitQuerySpecOutline(qs, sb, depth, maxDepth);
+            return;
+        }
+        boolean emitted = emitOutlineLine(node, sb, depth);
+        for (Node child : node.getChildren()) {
+            outlineRecurse(child, sb, emitted ? depth + 1 : depth, maxDepth);
+        }
+    }
+
+    private static boolean emitOutlineLine(Node node, StringBuilder sb, int depth) {
+        if (node instanceof With with) {
+            List<String> names = with.getQueries().stream()
+                .map(wq -> wq.getName().getValue())
+                .toList();
+            indent(sb, depth);
+            sb.append("WITH: ").append(String.join(", ", names)).append('\n');
+            return true;
+        } else if (node instanceof Join join) {
+            String crit = join.getCriteria().isPresent() ? " ON" : "";
+            indent(sb, depth);
+            sb.append("JOIN: ").append(join.getType().name()).append(crit).append('\n');
+            return true;
+        } else if (node instanceof Table t) {
+            indent(sb, depth);
+            sb.append("TABLE: ").append(qualifiedNameStr(t.getName())).append('\n');
+            return true;
+        } else if (node instanceof Insert ins) {
+            indent(sb, depth);
+            sb.append("INSERT INTO: ").append(qualifiedNameStr(ins.getTarget())).append('\n');
+            return true;
+        } else if (node instanceof Delete) {
+            indent(sb, depth);
+            sb.append("DELETE\n");
+            return true;
+        }
+        return false;
+    }
+
+    private static void emitQuerySpecOutline(QuerySpecification qs, StringBuilder sb,
+        int depth, int maxDepth) {
+        boolean hasStar = qs.getSelect().getSelectItems().stream()
+            .anyMatch(item -> item instanceof AllColumns);
+        int colCount = qs.getSelect().getSelectItems().size();
+        String selectLabel = (qs.getSelect().isDistinct() ? "SELECT DISTINCT" : "SELECT")
+            + ": " + (hasStar ? "*" : colCount + " column(s)");
+        indent(sb, depth);
+        sb.append(selectLabel).append('\n');
+        // FROM / JOINs
+        qs.getFrom().ifPresent(from -> outlineRecurse(from, sb, depth, maxDepth));
+        // Clauses
+        qs.getWhere().ifPresent(w -> { indent(sb, depth); sb.append("WHERE: (predicate)\n"); });
+        qs.getGroupBy().ifPresent(g -> { indent(sb, depth); sb.append("GROUP BY\n"); });
+        qs.getHaving().ifPresent(h -> { indent(sb, depth); sb.append("HAVING: (predicate)\n"); });
+        qs.getOrderBy().ifPresent(o -> { indent(sb, depth); sb.append("ORDER BY\n"); });
+        qs.getLimit().ifPresent(l -> {
+            indent(sb, depth);
+            if (l instanceof LongLiteral ll) {
+                sb.append("LIMIT: ").append(ll.getParsedValue()).append('\n');
+            } else {
+                sb.append("LIMIT\n");
+            }
+        });
+    }
+
+    // --- Shared helpers ---
+
+    private static String qualifiedNameStr(QualifiedName qn) {
+        return String.join(".",
+            qn.getOriginalParts().stream().map(Object::toString).toList());
     }
 
     private static void indent(StringBuilder sb, int depth) {

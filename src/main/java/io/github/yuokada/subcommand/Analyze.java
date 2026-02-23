@@ -1,6 +1,8 @@
 package io.github.yuokada.subcommand;
 
 import io.github.yuokada.EntryCommand;
+import io.github.yuokada.core.AstView;
+import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
@@ -86,11 +88,34 @@ public class Analyze implements Callable<Integer> {
      * Maximum characters for embedded AST (JSON).
      */
     @CommandLine.Option(names = {
-        "--ast-limit"}, defaultValue = "10000", description = "Maximum characters for embedded AST in JSON output")
+        "--ast-limit"}, defaultValue = "10000",
+        description = "Maximum characters for embedded AST in JSON output")
     private int astLimit;
+
+    /**
+     * AST display mode. Supported: tree (default), outline, raw.
+     */
+    @CommandLine.Option(names = {"--ast-view"}, defaultValue = "tree",
+        description = "AST display mode: tree (default), outline, or raw.")
+    private String astView = "tree";
+
+    /**
+     * Maximum AST depth to display. 0 means unlimited.
+     */
+    @CommandLine.Option(names = {"--ast-depth"}, defaultValue = "0",
+        description = "Maximum AST depth to display. 0 = unlimited.")
+    private int astDepth;
 
     @Override
     public Integer call() throws IOException {
+        AstView view;
+        try {
+            view = AstView.fromString(this.astView);
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            return ExitCodes.ERROR;
+        }
+
         List<String> statements = collectStatements();
         if (statements.size() > 1) {
             System.err.println(MULTIPLE_STATEMENTS_ERROR_MESSAGE);
@@ -104,8 +129,10 @@ public class Analyze implements Callable<Integer> {
         String statement = statements.get(0);
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
             AnalysisPrinter printer = isJsonFormat()
-                ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
-                : new TextAnalysisPrinter(emitter, isFullDetails(), showAst)) {
+                ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit,
+                    view, this.astDepth)
+                : new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view,
+                    this.astDepth)) {
             QueryAnalysisResult result =
                 QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema);
             printer.printStatement(result, null, statement);
@@ -183,5 +210,13 @@ public class Analyze implements Callable<Integer> {
 
     void setAstLimit(int astLimit) {
         this.astLimit = astLimit;
+    }
+
+    void setAstView(String astView) {
+        this.astView = astView;
+    }
+
+    void setAstDepth(int astDepth) {
+        this.astDepth = astDepth;
     }
 }
