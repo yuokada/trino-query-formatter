@@ -243,12 +243,53 @@ UnknownFunctions: [my_etl_transform]
 Lint: [WARNING] W002: Unknown function: my_etl_transform; may be a custom UDF or typo
 ```
 
+### UDF validation scope
+
+The following table summarises what can and cannot be validated without a live Trino cluster.
+
+| Validation | Supported | Method |
+|---|---|---|
+| Function existence | ✅ (W002) | Look up against built-in catalog |
+| **Argument count (arity)** | 🔜 Planned (W003) | `FunctionCall.getArguments().size()` |
+| Namespace / catalog-specific UDFs | 🔜 Planned | `FunctionCall.getName()` prefix check |
+| Argument types | ❌ Not possible | Requires cluster type inference |
+| Return type | ❌ Not possible | Requires cluster type inference |
+
+#### Future: UDF definition file (planned)
+
+A YAML definition file will allow richer validation such as arity checks:
+
+```yaml
+# udfs.yaml
+functions:
+  - name: my_etl_transform
+    description: "ETL transformation function"
+    arity: 2               # exact argument count
+
+  - name: date_to_epoch
+    arity: 1
+
+  - name: my_variadic_udf
+    minArgs: 1             # variable-length: accepts 1 or more arguments
+```
+
+Planned usage:
+
+```bash
+# Validate against a UDF definition file (arity + existence)
+analyze --validate-functions --udf-catalog udfs.yaml query.sql
+
+# Example output when argument count does not match
+# Lint: [WARNING] W003: Function my_etl_transform expects 2 argument(s), got 1
+```
+
 ### Lint rules
 
 | Rule | Severity | Trigger |
 |---|---|---|
 | `W001` | WARNING | `SELECT *` detected; prefer an explicit column list. |
 | `W002` | WARNING | Function name not found in Trino built-in catalog (requires `--validate-functions`). |
+| `W003` | WARNING | Function call arity does not match the UDF definition (planned). |
 | `E001` | ERROR | `DELETE` without a `WHERE` clause will affect all rows. |
 
 ---
