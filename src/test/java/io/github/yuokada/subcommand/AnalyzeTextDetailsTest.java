@@ -52,5 +52,58 @@ class AnalyzeTextDetailsTest {
         assertTrue(out.contains("QueryType: Delete"));
         assertTrue(out.contains("hasWhereOnDelete=true"));
     }
+
+    @Test
+    void testTextFullDetails_lintW001_selectStar(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("star.sql");
+        Files.writeString(sqlFile, "SELECT * FROM foo;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setDetails("full");
+        analyze.call();
+
+        String out = outContent.toString();
+        assertTrue(out.contains("Lint:"), "Lint line should appear: " + out);
+        assertTrue(out.contains("W001"), "W001 rule ID should appear: " + out);
+        assertTrue(out.contains("WARNING"), "WARNING severity should appear: " + out);
+        assertTrue(out.contains("SELECT *"), "SELECT * message should appear: " + out);
+    }
+
+    @Test
+    void testTextFullDetails_lintE001_deleteWithoutWhere(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("delete.sql");
+        Files.writeString(sqlFile, "DELETE FROM foo;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setDetails("full");
+        analyze.call();
+
+        String out = outContent.toString();
+        assertTrue(out.contains("Lint:"), "Lint line should appear: " + out);
+        assertTrue(out.contains("E001"), "E001 rule ID should appear: " + out);
+        assertTrue(out.contains("ERROR"), "ERROR severity should appear: " + out);
+        assertTrue(out.contains("DELETE without WHERE"), "Message should mention DELETE without WHERE: " + out);
+    }
+
+    @Test
+    void testTextFullDetails_noLintWhenClean(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("clean.sql");
+        Files.writeString(sqlFile, "SELECT id FROM foo;");
+
+        Analyze analyze = new Analyze();
+        analyze.setSqlFile(sqlFile.toString());
+        analyze.setFormat("text");
+        analyze.setDetails("full");
+        analyze.call();
+
+        String out = outContent.toString();
+        // No SELECT * and no DELETE without WHERE — no lint findings
+        assertTrue(!out.contains("Lint:") || !out.contains("W001"),
+            "No W001 finding should appear for SELECT id: " + out);
+    }
 }
 

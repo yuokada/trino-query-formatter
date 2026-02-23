@@ -1,8 +1,10 @@
 package io.github.yuokada.core;
 
 import io.github.yuokada.core.util.JsonUtil;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -172,6 +174,30 @@ public final class QueryAnalysisResult {
     }
 
     /**
+     * Returns lint findings derived from this analysis result.
+     *
+     * <p>Current rules:
+     * <ul>
+     *   <li>{@code W001} — WARNING: {@code SELECT *} detected; prefer explicit column list.</li>
+     *   <li>{@code E001} — ERROR: {@code DELETE} without {@code WHERE} will affect all rows.</li>
+     * </ul>
+     *
+     * @return unmodifiable list of lint findings (may be empty)
+     */
+    public List<LintFinding> getFindings() {
+        List<LintFinding> findings = new ArrayList<>();
+        if (this.usesSelectStar) {
+            findings.add(new LintFinding("W001", LintFinding.Severity.WARNING,
+                "SELECT * detected; prefer explicit column list"));
+        }
+        if (Boolean.FALSE.equals(this.hasWhereOnDelete)) {
+            findings.add(new LintFinding("E001", LintFinding.Severity.ERROR,
+                "DELETE without WHERE clause will affect all rows"));
+        }
+        return Collections.unmodifiableList(findings);
+    }
+
+    /**
      * Builds a compact JSON string representing this result.
      *
      * @return JSON representation
@@ -189,6 +215,7 @@ public final class QueryAnalysisResult {
         appendArray(sb, "functionsAggregate", functionsAggregate);
         appendArray(sb, "functionsWindow", functionsWindow);
         appendArray(sb, "writeTargets", writeTargets);
+        appendFindingsArray(sb, getFindings());
         if (hasLimit != null) {
             appendField(sb, "hasLimit", Boolean.toString(hasLimit), false);
         }
@@ -230,6 +257,19 @@ public final class QueryAnalysisResult {
             sb.append(value);
         }
         sb.append(',');
+    }
+
+    private static void appendFindingsArray(StringBuilder sb, List<LintFinding> findings) {
+        sb.append("\"findings\":[");
+        boolean first = true;
+        for (LintFinding f : findings) {
+            if (!first) {
+                sb.append(',');
+            }
+            sb.append(f.toJson());
+            first = false;
+        }
+        sb.append(']').append(',');
     }
 
     /**
