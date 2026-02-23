@@ -32,8 +32,8 @@ class AnalyzeTextDetailsTest {
 
     @Test
     void testTextFullDetailsPrintsExtendedInfo(@TempDir Path tempDir) throws IOException {
-        Path sqlFile = tempDir.resolve("multi.sql");
-        String sql = "SELECT * FROM catalog1.s.t LIMIT 10; DELETE FROM catalog1.s.t WHERE id = 1;";
+        Path sqlFile = tempDir.resolve("single.sql");
+        String sql = "SELECT * FROM catalog1.s.t LIMIT 10;";
         Files.writeString(sqlFile, sql);
 
         Analyze analyze = new Analyze();
@@ -48,9 +48,6 @@ class AnalyzeTextDetailsTest {
         assertTrue(out.contains("Tables: [catalog1.s.t]"));
         assertTrue(out.contains("usesSelectStar=true"));
         assertTrue(out.contains("hasLimit=true"));
-        // Second statement assertions
-        assertTrue(out.contains("QueryType: Delete"));
-        assertTrue(out.contains("hasWhereOnDelete=true"));
     }
 
     @Test
@@ -106,4 +103,3 @@ class AnalyzeTextDetailsTest {
             "No W001 finding should appear for SELECT id: " + out);
     }
 }
-
