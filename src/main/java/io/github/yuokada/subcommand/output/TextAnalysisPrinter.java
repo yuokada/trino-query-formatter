@@ -1,8 +1,10 @@
 package io.github.yuokada.subcommand.output;
 
+import io.github.yuokada.core.LintFinding;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -97,6 +99,12 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
             emitter.emit(
                 String.format("WriteTargets: [%s]",
                     String.join(",", r.getWriteTargets().stream().sorted().toList())));
+        }
+        List<LintFinding> findings = r.getFindings();
+        if (!findings.isEmpty()) {
+            for (LintFinding f : findings) {
+                emitter.emit("Lint: " + f.toString());
+            }
         }
         if (r.getParseError() != null) {
             emitter.emit(String.format("ParseError: %s", r.getParseError()));
