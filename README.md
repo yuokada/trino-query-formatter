@@ -132,7 +132,7 @@ UPDATE_GOLDEN=true ./mvnw test -Dtest=GoldenFormatTest
 
 ## `analyze` subcommand
 
-Analyzes one or more SQL statements and reports catalogs, tables, functions, joins,
+Analyzes exactly one SQL statement and reports catalogs, tables, functions, joins,
 CTEs, and lint findings.
 
 ### Usage
@@ -144,10 +144,10 @@ analyze [options] [<file>]
 | Option | Default | Description |
 |---|---|---|
 | `<file>` | stdin | SQL file to analyze. Reads from stdin when omitted. |
-| `--format <fmt>` | `text` | Output format: `text` or `json` (NDJSON — one object per statement). |
+| `--format <fmt>` | `text` | Output format: `text` or `json` (single object for the single query). |
 | `--details <level>` | `basic` | Detail level: `basic` (catalogs only) or `full` (all fields + lint). |
 | `--output <path>` | stdout | Write output to this file instead of stdout. |
-| `--show-ast` | false | Print the AST after each statement. |
+| `--show-ast` | false | Print the AST for the query. |
 | `--ast-limit <n>` | `10000` | Maximum characters for the embedded AST in JSON output. |
 | `--catalog <name>` | — | Default catalog for partially qualified names (`schema.table`). |
 | `--schema <name>` | — | Default schema for unqualified names (`table`), requires `--catalog`. |
@@ -182,6 +182,14 @@ analyze --format json --details full query.sql
 
 ```json
 {"queryType":"Query","catalogs":["catalog1"],"tables":["catalog1.s.orders"],"usesSelectStar":true,"ctes":[],"joins":[],"functionsScalar":[],"functionsAggregate":[],"functionsWindow":[],"writeTargets":[],"findings":[{"ruleId":"W001","severity":"WARNING","message":"SELECT * detected; prefer explicit column list"}],"hasLimit":false}
+```
+
+### Multiple statements are rejected
+
+```bash
+analyze multi.sql
+# stderr: analyze supports exactly one query; found multiple statements
+# exit code: 1
 ```
 
 ### Catalog / schema defaults
@@ -224,7 +232,7 @@ java -jar ... --quiet format --check query.sql
 | Code | Meaning |
 |---|---|
 | `0` | Success. |
-| `1` | WARNING — `--check` found statements that need reformatting. |
+| `1` | WARNING/validation failure — `--check` found statements that need reformatting, or `analyze` received multiple statements. |
 | `2` | ERROR — parse error, missing file, or invalid option value. |
 | `3` | EXCEPTION — unexpected runtime error. |
 

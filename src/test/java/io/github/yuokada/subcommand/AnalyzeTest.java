@@ -16,20 +16,24 @@ import org.junit.jupiter.api.io.TempDir;
 class AnalyzeTest {
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private final ByteArrayOutputStream errContent = new ByteArrayOutputStream();
     private final PrintStream originalOut = System.out;
+    private final PrintStream originalErr = System.err;
 
     @BeforeEach
     public void setUpStreams() {
         System.setOut(new PrintStream(outContent));
+        System.setErr(new PrintStream(errContent));
     }
 
     @AfterEach
     public void restoreStreams() {
         System.setOut(originalOut);
+        System.setErr(originalErr);
     }
 
     @Test
-    void testCallWithFile(@TempDir Path tempDir) throws IOException {
+    void testCallWithFile_multipleQueries_returnsError(@TempDir Path tempDir) throws IOException {
         Path sqlFile = tempDir.resolve("test.sql");
         String sql = "SELECT * FROM catalog1.schema.tbl1; SELECT * FROM catalog2.schema.tbl2;";
         Files.writeString(sqlFile, sql);
@@ -42,15 +46,13 @@ class AnalyzeTest {
         } catch (ReflectiveOperationException e) {
             throw new IOException(e);
         }
-        analyze.call();
+        int exitCode = analyze.call();
 
-        String expectedOutput = """
-            =========================
-            Catalogs: [catalog1]
-            =========================
-            Catalogs: [catalog2]
-            """.trim();
-        assertEquals(expectedOutput, outContent.toString().trim());
+        assertEquals(1, exitCode);
+        assertEquals("", outContent.toString().trim());
+        assertEquals(
+            "analyze supports exactly one query; found multiple statements",
+            errContent.toString().trim());
     }
 
     @Test

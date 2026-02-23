@@ -17,17 +17,21 @@ import picocli.CommandLine;
 class EntryCommandTest {
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private final ByteArrayOutputStream errContent = new ByteArrayOutputStream();
     private final PrintStream originalOut = System.out;
+    private final PrintStream originalErr = System.err;
     private final java.io.InputStream originalIn = System.in;
 
     @BeforeEach
     void setUpStreams() {
         System.setOut(new PrintStream(outContent));
+        System.setErr(new PrintStream(errContent));
     }
 
     @AfterEach
     void restoreStreams() {
         System.setOut(originalOut);
+        System.setErr(originalErr);
         System.setIn(originalIn);
     }
 
@@ -110,13 +114,24 @@ class EntryCommandTest {
 
         int exit = new CommandLine(new EntryCommand()).execute("analyze");
 
-        String expected = """
-            =========================
-            Catalogs of Query No 1: [catalog1]
-            =========================
-            No catalogs found.
-            """.trim();
-        assertEquals(0, exit);
-        assertEquals(expected, outContent.toString().trim());
+        assertEquals(1, exit);
+        assertEquals("", outContent.toString().trim());
+        assertEquals(
+            "analyze supports exactly one query; found multiple statements",
+            errContent.toString().trim());
+    }
+
+    @Test
+    void analyze_multipleQueriesFromFile_viaCommandLine(@TempDir Path tempDir) throws IOException {
+        Path sqlFile = tempDir.resolve("analyze_multi.sql");
+        Files.writeString(sqlFile, "SELECT * FROM catalog1.schema.tbl1; SELECT 1;");
+
+        int exit = new CommandLine(new EntryCommand()).execute("analyze", sqlFile.toString());
+
+        assertEquals(1, exit);
+        assertEquals("", outContent.toString().trim());
+        assertEquals(
+            "analyze supports exactly one query; found multiple statements",
+            errContent.toString().trim());
     }
 }

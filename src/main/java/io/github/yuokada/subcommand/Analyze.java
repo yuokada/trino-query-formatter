@@ -9,6 +9,8 @@ import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -17,6 +19,9 @@ import picocli.CommandLine.ParentCommand;
 
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer> {
+    private static final String MULTIPLE_STATEMENTS_ERROR_MESSAGE =
+        "analyze supports exactly one query; found multiple statements";
+    private static final int MULTIPLE_STATEMENTS_EXIT_CODE = 1;
 
     /**
      * The parent command.
@@ -86,26 +91,36 @@ public class Analyze implements Callable<Integer> {
 
     @Override
     public Integer call() throws IOException {
+        List<String> statements = collectStatements();
+        if (statements.size() > 1) {
+            System.err.println(MULTIPLE_STATEMENTS_ERROR_MESSAGE);
+            return MULTIPLE_STATEMENTS_EXIT_CODE;
+        }
+
+        if (statements.isEmpty()) {
+            return ExitCode.OK;
+        }
+
+        String statement = statements.get(0);
         try (OutputEmitter emitter = new OutputEmitter(outputPath);
             AnalysisPrinter printer = isJsonFormat()
                 ? new JsonAnalysisPrinter(emitter, isBasicDetails(), showAst, astLimit)
                 : new TextAnalysisPrinter(emitter, isFullDetails(), showAst)) {
-
-            if (!sqlFile.isEmpty()) {
-                SqlInput.forEachStatementFromFile(sqlFile, stmt -> {
-                    QueryAnalysisResult result =
-                        QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
-                    printer.printStatement(result, null, stmt);
-                });
-            } else {
-                SqlInput.forEachStatementFromStdin((idx, stmt) -> {
-                    QueryAnalysisResult result =
-                        QueryAnalyzer.analyze(stmt, defaultCatalog, defaultSchema);
-                    printer.printStatement(result, idx, stmt);
-                });
-            }
+            QueryAnalysisResult result =
+                QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema);
+            printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
+    }
+
+    private List<String> collectStatements() throws IOException {
+        List<String> statements = new ArrayList<>();
+        if (!sqlFile.isEmpty()) {
+            SqlInput.forEachStatementFromFile(sqlFile, statements::add);
+            return statements;
+        }
+        SqlInput.forEachStatementFromStdin((idx, stmt) -> statements.add(stmt));
+        return statements;
     }
 
     /**

@@ -22,22 +22,26 @@ import org.junit.jupiter.api.io.TempDir;
 class AnalyzeJsonAstTest {
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private final ByteArrayOutputStream errContent = new ByteArrayOutputStream();
     private final PrintStream originalOut = System.out;
+    private final PrintStream originalErr = System.err;
     private final java.io.InputStream originalIn = System.in;
 
     @BeforeEach
     public void setUpStreams() {
         System.setOut(new PrintStream(outContent));
+        System.setErr(new PrintStream(errContent));
     }
 
     @AfterEach
     public void restoreStreams() {
         System.setOut(originalOut);
+        System.setErr(originalErr);
         System.setIn(originalIn);
     }
 
     @Test
-    void testJsonOutputWithTwoStatements(@TempDir Path tempDir) throws IOException {
+    void testJsonOutputWithTwoStatements_returnsError(@TempDir Path tempDir) throws IOException {
         Path sqlFile = tempDir.resolve("two.sql");
         String sql = "SELECT 1; SELECT * FROM catalog1.s.t;";
         Files.writeString(sqlFile, sql);
@@ -45,13 +49,13 @@ class AnalyzeJsonAstTest {
         Analyze analyze = new Analyze();
         analyze.setSqlFile(sqlFile.toString());
         analyze.setFormat("json");
-        analyze.call();
+        int exitCode = analyze.call();
 
-        String out = outContent.toString(StandardCharsets.UTF_8);
-        String[] lines = out.strip().split("\n");
-        assertEquals(2, lines.length);
-        assertTrue(lines[0].contains("\"queryType\""));
-        assertTrue(lines[1].contains("\"catalogs\""));
+        assertEquals(1, exitCode);
+        assertEquals("", outContent.toString(StandardCharsets.UTF_8).strip());
+        assertEquals(
+            "analyze supports exactly one query; found multiple statements",
+            errContent.toString(StandardCharsets.UTF_8).strip());
     }
 
     @Test
@@ -84,7 +88,7 @@ class AnalyzeJsonAstTest {
         analyze.call();
 
         String out = outContent.toString(StandardCharsets.UTF_8);
-        assertTrue(out.contains("Catalogs of Query No") || out.contains("Catalogs:"));
+        assertTrue(out.contains("Catalogs:"));
         assertTrue(out.contains("AST:"));
     }
 
