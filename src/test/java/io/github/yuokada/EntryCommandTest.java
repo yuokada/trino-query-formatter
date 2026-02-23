@@ -81,7 +81,9 @@ class EntryCommandTest {
     void versionFlag_printsVersion() {
         int exit = new CommandLine(new EntryCommand()).execute("-V");
         String out = outContent.toString();
-        org.junit.jupiter.api.Assertions.assertTrue(out.contains("0.1"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("trino-query-formatter"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("("));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains(")"));
         org.junit.jupiter.api.Assertions.assertEquals(0, exit);
     }
 

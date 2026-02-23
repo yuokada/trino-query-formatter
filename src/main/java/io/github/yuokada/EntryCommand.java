@@ -5,8 +5,6 @@ import io.github.yuokada.subcommand.Format;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import java.io.IOException;
 import java.util.concurrent.Callable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
 
@@ -18,32 +16,9 @@ import picocli.CommandLine.ExitCode;
         Format.class
     },
     mixinStandardHelpOptions = true,
-    version = "0.1",
+    versionProvider = GitVersionProvider.class,
     description = "Tool to format SQL queries for Trino.")
 public class EntryCommand implements Callable<Integer> {
-
-    /**
-     * Logger instance for this class.
-     */
-    private static final Logger logger = LoggerFactory.getLogger(EntryCommand.class);
-
-    /**
-     * The version of the command.
-     */
-    @CommandLine.Option(
-        names = {"--version", "-V"},
-        versionHelp = true,
-        description = "print version information and exit")
-    private boolean versionRequested;
-
-    /**
-     * Show help message.
-     */
-    @CommandLine.Option(
-        names = {"--help", "-h"},
-        usageHelp = true,
-        description = "show this help message and exit")
-    private boolean help;
 
     /**
      * Enable verbose output (print file names, statement counts, etc. to stderr).
