@@ -1,5 +1,6 @@
 package io.github.yuokada.subcommand;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,8 +38,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 class AnalyzeCommandContainerTest {
 
+    private static final String TRINO_IMAGE =
+        "trinodb/trino:" + System.getProperty("trino.version", "435");
+
     @Container
-    private static final TrinoContainer TRINO = new TrinoContainer("trinodb/trino:435");
+    private static final TrinoContainer TRINO = new TrinoContainer(TRINO_IMAGE);
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
     private final ByteArrayOutputStream errContent = new ByteArrayOutputStream();
@@ -74,10 +78,12 @@ class AnalyzeCommandContainerTest {
         analyze.call();
 
         String out = this.outContent.toString(StandardCharsets.UTF_8);
-        assertFalse(out.contains("E002"), "Valid query should not produce E002: " + out);
-        assertFalse(out.contains("E003"), "Valid query should not produce E003: " + out);
-        assertFalse(out.contains("E004"), "Valid query should not produce E004: " + out);
-        assertFalse(out.contains("E005"), "Valid query should not produce E005: " + out);
+        assertAll(
+            () -> assertFalse(out.contains("E002"), "Valid query should not produce E002: " + out),
+            () -> assertFalse(out.contains("E003"), "Valid query should not produce E003: " + out),
+            () -> assertFalse(out.contains("E004"), "Valid query should not produce E004: " + out),
+            () -> assertFalse(out.contains("E005"), "Valid query should not produce E005: " + out)
+        );
     }
 
     // ---- Invalid table: E002 in output -------------------------------------

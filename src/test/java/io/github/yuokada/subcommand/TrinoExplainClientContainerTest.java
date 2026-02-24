@@ -28,8 +28,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 class TrinoExplainClientContainerTest {
 
+    private static final String TRINO_IMAGE =
+        "trinodb/trino:" + System.getProperty("trino.version", "435");
+
     @Container
-    private static final TrinoContainer TRINO = new TrinoContainer("trinodb/trino:435");
+    private static final TrinoContainer TRINO = new TrinoContainer(TRINO_IMAGE);
 
     private TrinoConnectionOptions opts;
 
