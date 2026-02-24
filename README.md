@@ -165,6 +165,13 @@ analyze [options] [<file>]
 | `--validate-functions` | false | Flag functions that are not Trino built-ins as **W002** lint warnings. |
 | `--known-functions <list\|@file>` | — | Comma-separated list of additional known function names, or `@path` to a text file (one name per line). Requires `--validate-functions`. |
 | `--udf-catalog <path>` | — | YAML file with UDF definitions for arity validation (**W003**). Functions listed are also treated as known (suppresses W002). |
+| `--server <host:port>` | — | Trino server for Phase 2 remote validation via `EXPLAIN (TYPE VALIDATE)`. Omit to run local analysis only. |
+| `--server-user <name>` | OS user | User name for the Trino session. Falls back to `TRINO_USER` env var. |
+| `--server-password` | — | Password for Basic auth. Omit the value to be prompted interactively. Falls back to `TRINO_PASSWORD`. |
+| `--server-access-token <token>` | — | Bearer token for OAuth2/JWT. Falls back to `TRINO_ACCESS_TOKEN`. |
+| `--server-ssl` | false | Enable TLS for the Trino connection. |
+| `--server-ssl-trust-all` | false | Disable TLS certificate verification (development only). |
+| `--explain-timeout <sec>` | `30` | Timeout in seconds for the remote `EXPLAIN (TYPE VALIDATE)` request. |
 
 ### Text output (basic — default)
 
@@ -291,12 +298,24 @@ analyze --validate-functions --udf-catalog udfs.yaml query.sql
 
 ### Lint rules
 
+**Phase 1 — local static analysis (always runs):**
+
 | Rule | Severity | Trigger |
 |---|---|---|
 | `W001` | WARNING | `SELECT *` detected; prefer an explicit column list. |
 | `W002` | WARNING | Function name not found in Trino built-in catalog (requires `--validate-functions`). |
 | `W003` | WARNING | Function call arity does not match the UDF definition (requires `--udf-catalog`). |
 | `E001` | ERROR | `DELETE` without a `WHERE` clause will affect all rows. |
+
+**Phase 2 — remote validation via `EXPLAIN (TYPE VALIDATE)` (requires `--server`, runs only when Phase 1 has no errors):**
+
+| Rule | Severity | Trigger |
+|---|---|---|
+| `W004` | WARNING | Other `USER_ERROR` from the Trino server not covered by E002–E005. |
+| `E002` | ERROR | Table or view not found (`TABLE_NOT_FOUND`). |
+| `E003` | ERROR | Column not found (`COLUMN_NOT_FOUND`). |
+| `E004` | ERROR | Function not found on the server (`FUNCTION_NOT_FOUND`). |
+| `E005` | ERROR | Type mismatch (`TYPE_MISMATCH`). |
 
 ---
 

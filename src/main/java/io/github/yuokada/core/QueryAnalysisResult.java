@@ -75,6 +75,12 @@ public final class QueryAnalysisResult {
      */
     private final List<LintFinding> w003Findings = new ArrayList<>();
 
+    /**
+     * Findings produced by Phase 2 remote validation (E002–E005, W004).
+     * Empty when remote validation was not performed or the query passed.
+     */
+    private final List<LintFinding> remoteFindings = new ArrayList<>();
+
     private QueryAnalysisResult(Builder b) {
         this.queryType = b.queryType;
         this.catalogs = Collections.unmodifiableSet(new LinkedHashSet<>(b.catalogs));
@@ -91,6 +97,7 @@ public final class QueryAnalysisResult {
         this.writeTargets.addAll(b.writeTargets);
         this.unknownFunctions.addAll(b.unknownFunctions);
         this.w003Findings.addAll(b.w003Findings);
+        this.remoteFindings.addAll(b.remoteFindings);
     }
 
     /**
@@ -223,7 +230,41 @@ public final class QueryAnalysisResult {
             findings.add(new LintFinding("E001", LintFinding.Severity.ERROR,
                 "DELETE without WHERE clause will affect all rows"));
         }
+        findings.addAll(this.remoteFindings);
         return Collections.unmodifiableList(findings);
+    }
+
+    /**
+     * Returns a new {@link QueryAnalysisResult} with the given remote findings appended.
+     *
+     * <p>All Phase 1 data is copied unchanged; the remote findings list is replaced with the
+     * supplied list. Used by {@link TrinoRemoteValidator} to attach Phase 2 results.
+     *
+     * @param newRemoteFindings findings produced by remote {@code EXPLAIN (TYPE VALIDATE)}
+     * @return new result instance with remote findings populated
+     */
+    public QueryAnalysisResult withRemoteFindings(List<LintFinding> newRemoteFindings) {
+        Builder b = new Builder();
+        b.queryType = this.queryType;
+        b.catalogs.addAll(this.catalogs);
+        b.tables.addAll(this.tables);
+        b.usesSelectStar = this.usesSelectStar;
+        b.hasLimit = this.hasLimit;
+        b.hasWhereOnDelete = this.hasWhereOnDelete;
+        b.parseError = this.parseError;
+        b.ctes.addAll(this.ctes);
+        b.joins.addAll(this.joins);
+        b.functionsScalar.addAll(this.functionsScalar);
+        b.functionsAggregate.addAll(this.functionsAggregate);
+        b.functionsWindow.addAll(this.functionsWindow);
+        b.writeTargets.addAll(this.writeTargets);
+        b.unknownFunctions.addAll(this.unknownFunctions);
+        b.w003Findings.addAll(this.w003Findings);
+        // Do NOT copy this.remoteFindings; withRemoteFindings() replaces them with newRemoteFindings.
+        if (newRemoteFindings != null) {
+            b.remoteFindings.addAll(newRemoteFindings);
+        }
+        return new QueryAnalysisResult(b);
     }
 
     /**
@@ -367,6 +408,11 @@ public final class QueryAnalysisResult {
          * W003 arity mismatch findings generated when a UDF catalog is provided.
          */
         private final List<LintFinding> w003Findings = new ArrayList<>();
+
+        /**
+         * E002-E005 / W004 findings from Phase 2 remote EXPLAIN (TYPE VALIDATE).
+         */
+        private final List<LintFinding> remoteFindings = new ArrayList<>();
 
         /**
          * @param v query type value
