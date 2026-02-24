@@ -368,6 +368,26 @@ java -jar ... --quiet format --check query.sql
 ./mvnw package -Dnative -Dquarkus.native.container-build=true
 ```
 
+### Integration tests (Docker required)
+
+The integration tests in `TrinoExplainClientContainerTest` and `AnalyzeCommandContainerTest`
+start a real Trino 435 container via [Testcontainers](https://testcontainers.com/) to verify
+the end-to-end `EXPLAIN (TYPE VALIDATE)` flow. They are skipped automatically when Docker is
+not available.
+
+```bash
+# Start Docker Desktop (macOS), then:
+
+# Run only the integration tests
+./mvnw test -Dtest="TrinoExplainClientContainerTest,AnalyzeCommandContainerTest"
+
+# Run the full suite including integration tests
+./mvnw verify
+```
+
+The first run pulls the `trinodb/trino:435` image (~700 MB). Subsequent runs reuse the cached
+image. The container is started once per test class and stopped when the class finishes.
+
 The über-jar is produced at `target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar`.
 
 For more information on Quarkus, see <https://quarkus.io/>.
