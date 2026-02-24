@@ -19,6 +19,7 @@
         <git-commit-id-plugin.version>9.0.2</git-commit-id-plugin.version>
         <!-- App specific properties -->
         <trino.version>435</trino.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <scm>
@@ -93,6 +94,24 @@
             <artifactId>antlr4-runtime</artifactId>
             <version>4.13.2</version>
             <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>trino</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.trino</groupId>
+            <artifactId>trino-jdbc</artifactId>
+            <version>${trino.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
