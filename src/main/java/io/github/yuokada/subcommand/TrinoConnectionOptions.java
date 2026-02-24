@@ -29,10 +29,16 @@ public class TrinoConnectionOptions {
 
     /**
      * Password for Basic authentication.
+     * Specify without a value (e.g. {@code --server-password}) to be prompted interactively,
+     * avoiding exposure in shell history and process listings.
+     * The {@code TRINO_PASSWORD} environment variable is the recommended alternative for CI/CD.
      */
     @CommandLine.Option(
         names = {"--server-password"},
-        description = "Password for Basic authentication (prefer TRINO_PASSWORD env var)")
+        description = "Password for Basic authentication (prefer TRINO_PASSWORD env var)."
+            + " Omit the value to be prompted interactively.",
+        arity = "0..1",
+        interactive = true)
     private String password;
 
     /**

@@ -49,6 +49,7 @@ public final class TrinoExplainClient implements Closeable {
      * @param catalog default catalog for the session (may be {@code null})
      * @param schema  default schema for the session (may be {@code null})
      * @return a configured client ready to execute validate requests
+     * @throws IllegalArgumentException if the server address produces an invalid URI
      */
     public static TrinoExplainClient create(
             TrinoConnectionOptions opts, String catalog, String schema) {
@@ -57,15 +58,31 @@ public final class TrinoExplainClient implements Closeable {
         // Authentication
         String token = opts.getAccessToken();
         String password = opts.getPassword();
+        boolean hasAuth = false;
         if (token != null && !token.isBlank()) {
             builder.addInterceptor(OkHttpUtil.tokenAuth(token));
+            hasAuth = true;
         } else if (password != null && !password.isBlank()) {
             builder.addInterceptor(OkHttpUtil.basicAuth(opts.getUser(), password));
+            hasAuth = true;
         }
 
         // SSL
         if (opts.isSslTrustAll()) {
+            if (opts.isSsl()) {
+                // Both --server-ssl and --server-ssl-trust-all supplied:
+                // trust-all takes precedence and disables certificate verification.
+                System.err.println("[remote-validation] WARNING: --server-ssl-trust-all disables "
+                    + "certificate verification; --server-ssl is redundant when trust-all is set.");
+            }
             OkHttpUtil.setupInsecureSsl(builder);
+        }
+
+        // Warn when credentials are sent over plain HTTP (no TLS).
+        // --server-ssl or --server-ssl-trust-all must be set to protect credentials.
+        if (hasAuth && !opts.isSsl() && !opts.isSslTrustAll()) {
+            System.err.println("[remote-validation] WARNING: authentication credentials are being "
+                + "sent over plain HTTP. Use --server-ssl to enable TLS.");
         }
 
         // Timeout
@@ -76,14 +93,20 @@ public final class TrinoExplainClient implements Closeable {
 
         OkHttpClient httpClient = builder.build();
 
-        // Build the server URI
+        // Build the server URI. The scheme is determined by --server-ssl / --server-ssl-trust-all.
         String server = opts.getServer();
-        String scheme = opts.isSsl() ? "https" : "http";
-        URI serverUri = URI.create(scheme + "://" + server);
+        String scheme = (opts.isSsl() || opts.isSslTrustAll()) ? "https" : "http";
+        URI serverUri;
+        try {
+            serverUri = URI.create(scheme + "://" + server);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                "Invalid Trino server URI: " + scheme + "://" + server, e);
+        }
 
         ClientSession clientSession = ClientSession.builder()
             .server(serverUri)
-            .user(Optional.of(opts.getUser()))
+            .user(Optional.ofNullable(opts.getUser()))
             .catalog(catalog)
             .schema(schema)
             .timeZone(ZoneId.systemDefault())
@@ -102,10 +125,18 @@ public final class TrinoExplainClient implements Closeable {
      * On internal server error or unexpected state, returns {@link RemoteValidationResult#skipped()}
      * and emits a warning to stderr.
      *
-     * @param sql the original SQL statement (without the {@code EXPLAIN} prefix)
+     * <p>The {@code sql} parameter must be the original statement without any {@code EXPLAIN}
+     * prefix. Passing a statement that already starts with {@code EXPLAIN} would produce a
+     * malformed query.
+     *
+     * @param sql the original SQL statement (must not be {@code null} or start with EXPLAIN)
      * @return validation result
+     * @throws IllegalArgumentException if {@code sql} is {@code null}
      */
     public RemoteValidationResult validate(String sql) {
+        if (sql == null) {
+            throw new IllegalArgumentException("sql must not be null");
+        }
         String validateSql = "EXPLAIN (TYPE VALIDATE) " + sql;
 
         try (StatementClient client =
@@ -135,7 +166,8 @@ public final class TrinoExplainClient implements Closeable {
             }
 
             // Unexpected state
-            System.err.println("[remote-validation] Unexpected client state after EXPLAIN (TYPE VALIDATE)");
+            System.err.println(
+                "[remote-validation] Unexpected client state after EXPLAIN (TYPE VALIDATE)");
             return RemoteValidationResult.skipped();
 
         } catch (Exception e) {
@@ -188,7 +220,7 @@ public final class TrinoExplainClient implements Closeable {
                 break;
         }
 
-        String message = buildMessage(ruleId, err);
+        String message = buildMessage(err);
         findings.add(new LintFinding(ruleId, severity, message));
         return findings;
     }
@@ -197,12 +229,21 @@ public final class TrinoExplainClient implements Closeable {
      * Builds a human-readable message string from a {@link QueryError},
      * optionally appending location information when {@link ErrorLocation} is available.
      *
-     * @param ruleId rule identifier for the message prefix
-     * @param err    query error from the server
-     * @return formatted message string
+     * <p>Falls back to the error name, then to {@code "Unknown server error"} when
+     * both {@code message} and {@code errorName} are {@code null}.
+     *
+     * @param err query error from the server
+     * @return formatted message string (never {@code null})
      */
-    private static String buildMessage(String ruleId, QueryError err) {
-        String base = err.getMessage() != null ? err.getMessage() : err.getErrorName();
+    private static String buildMessage(QueryError err) {
+        String base;
+        if (err.getMessage() != null) {
+            base = err.getMessage();
+        } else if (err.getErrorName() != null) {
+            base = err.getErrorName();
+        } else {
+            base = "Unknown server error";
+        }
         ErrorLocation loc = err.getErrorLocation();
         if (loc != null) {
             return base + " (line " + loc.getLineNumber() + ", col " + loc.getColumnNumber() + ")";

@@ -260,7 +260,7 @@ public final class QueryAnalysisResult {
         b.writeTargets.addAll(this.writeTargets);
         b.unknownFunctions.addAll(this.unknownFunctions);
         b.w003Findings.addAll(this.w003Findings);
-        b.remoteFindings.addAll(this.remoteFindings);
+        // Do NOT copy this.remoteFindings; withRemoteFindings() replaces them with newRemoteFindings.
         if (newRemoteFindings != null) {
             b.remoteFindings.addAll(newRemoteFindings);
         }

@@ -3,6 +3,7 @@ package io.github.yuokada.subcommand;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -149,13 +150,12 @@ class AnalyzeRemoteValidationTest {
 
     @Test
     void testConnectionOptions_noServerEnv_isDisabled() {
+        // Skip when TRINO_SERVER is set in the environment so the test is not flaky in CI.
+        assumeTrue(System.getenv("TRINO_SERVER") == null,
+            "Skipping: TRINO_SERVER is set in the environment");
+
         TrinoConnectionOptions opts = new TrinoConnectionOptions();
-        // TRINO_SERVER not set in test environment (no override)
-        // isEnabled() should be false when neither option nor env var is present
-        // (We can only assert when env var is genuinely absent)
-        if (System.getenv("TRINO_SERVER") == null) {
-            assertFalse(opts.isEnabled(),
-                "isEnabled() should be false when TRINO_SERVER is not set");
-        }
+        assertFalse(opts.isEnabled(),
+            "isEnabled() should be false when neither --server nor TRINO_SERVER is present");
     }
 }
