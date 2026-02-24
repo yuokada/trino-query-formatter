@@ -5,6 +5,7 @@ import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
+import io.github.yuokada.core.TrinoRemoteValidator;
 import io.github.yuokada.core.UdfCatalog;
 import io.github.yuokada.core.UdfDefinition;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
@@ -141,6 +142,13 @@ public class Analyze implements Callable<Integer> {
         description = "YAML file with UDF definitions for arity validation (W003).")
     private String udfCatalogPath;
 
+    /**
+     * Trino server connection options for Phase 2 remote EXPLAIN (TYPE VALIDATE).
+     * Remote validation is only performed when {@code --server} is specified.
+     */
+    @CommandLine.ArgGroup(heading = "%nRemote Validation Options:%n", validate = false)
+    private TrinoConnectionOptions serverOptions = new TrinoConnectionOptions();
+
     @Override
     public Integer call() throws IOException {
         AstView view;
@@ -184,6 +192,9 @@ public class Analyze implements Callable<Integer> {
             QueryAnalysisResult result =
                 QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema,
                     effectiveKnown, udfCatalog);
+            // Phase 2: remote validation via EXPLAIN (TYPE VALIDATE)
+            result = TrinoRemoteValidator.validate(
+                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
@@ -331,5 +342,9 @@ public class Analyze implements Callable<Integer> {
 
     void setUdfCatalogPath(String udfCatalogPath) {
         this.udfCatalogPath = udfCatalogPath;
+    }
+
+    void setServerOptions(TrinoConnectionOptions serverOptions) {
+        this.serverOptions = serverOptions;
     }
 }
