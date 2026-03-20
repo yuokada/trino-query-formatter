@@ -14,7 +14,8 @@ Follow these repository instructions when working in this project.
 
 - Production code lives under `src/main/java/io/github/yuokada`.
 - Tests live under `src/test/java` and test resources live under `src/test/resources`.
-- Sample SQL files and fixtures live under `src/main/resources/queries` and `src/test/resources/queries`.
+- Sample SQL files live under `src/main/resources/queries`.
+- Test fixtures (including SQL files) live under `src/test/resources/queries`.
 - Maven Wrapper is the standard entry point for build and test commands.
 
 ## Validation
