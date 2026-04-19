@@ -305,6 +305,9 @@ analyze --validate-functions --udf-catalog udfs.yaml query.sql
 | `W001` | WARNING | `SELECT *` detected; prefer an explicit column list. |
 | `W002` | WARNING | Function name not found in Trino built-in catalog (requires `--validate-functions`). |
 | `W003` | WARNING | Function call arity does not match the UDF definition (requires `--udf-catalog`). |
+| `W005` | WARNING | `ORDER BY` uses a positional reference (e.g. `ORDER BY 1`); use explicit column names. |
+| `W006` | WARNING | Top-level `LIMIT` without `ORDER BY`; result set order is non-deterministic. |
+| `W007` | WARNING | Query spans multiple catalogs and contains unqualified table references. |
 | `E001` | ERROR | `DELETE` without a `WHERE` clause will affect all rows. |
 
 **Phase 2 — remote validation via `EXPLAIN (TYPE VALIDATE)` (requires `--server`, runs only when Phase 1 has no errors):**

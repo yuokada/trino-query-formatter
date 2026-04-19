@@ -21,6 +21,7 @@ import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.Query;
 import io.trino.sql.tree.QuerySpecification;
 import io.trino.sql.tree.ShowCatalogs;
+import io.trino.sql.tree.SortItem;
 import io.trino.sql.tree.Statement;
 import io.trino.sql.tree.Table;
 import io.trino.sql.tree.Update;
@@ -171,6 +172,24 @@ public final class QueryAnalyzer {
             if (statement instanceof Delete del) {
                 b.hasWhereOnDelete(del.getWhere().isPresent());
             }
+            // W005: ORDER BY positional reference (fires for subqueries too)
+            b.hasOrderByPositionalRef(containsOrderByPositionalRef(statement));
+            // W006: top-level LIMIT without ORDER BY
+            if (statement instanceof Query q) {
+                boolean limitPresent = q.getLimit().isPresent();
+                boolean orderByPresent = q.getOrderBy().isPresent();
+                if (!orderByPresent && q.getQueryBody() instanceof QuerySpecification qs) {
+                    orderByPresent = qs.getOrderBy().isPresent();
+                    if (!limitPresent) {
+                        limitPresent = qs.getLimit().isPresent();
+                    }
+                }
+                b.hasLimitWithoutOrderBy(limitPresent && !orderByPresent);
+            }
+            // W007: unqualified table when multiple catalogs are in scope
+            if (catalogs.size() > 1) {
+                b.hasUnqualifiedInMultiCatalog(containsUnqualifiedTable(statement));
+            }
             // Extended details (including unknown function detection and arity checking)
             collectExtendedDetails(statement, b, defaultCatalog, defaultSchema, catalogs,
                 normalizedKnown, udfCatalog);
@@ -315,6 +334,44 @@ public final class QueryAnalyzer {
             collectExtendedDetails(child, b, defaultCatalog, defaultSchema, catalogs,
                 knownFunctions, udfCatalog);
         }
+    }
+
+    /**
+     * Returns true if the AST rooted at {@code node} contains an ORDER BY clause
+     * where the sort key is a positional integer literal (e.g. {@code ORDER BY 1}).
+     *
+     * @param node root AST node to search
+     * @return true if any SortItem uses a LongLiteral as its sort key
+     */
+    private static boolean containsOrderByPositionalRef(Node node) {
+        if (node instanceof SortItem si) {
+            return si.getSortKey() instanceof LongLiteral;
+        }
+        for (Node child : node.getChildren()) {
+            if (containsOrderByPositionalRef(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns true if the AST rooted at {@code node} contains a table reference
+     * that is not fully qualified (i.e. has fewer than 3 name parts).
+     *
+     * @param node root AST node to search
+     * @return true if any Table node has fewer than 3 name parts
+     */
+    private static boolean containsUnqualifiedTable(Node node) {
+        if (node instanceof Table t) {
+            return t.getName().getParts().size() < 3;
+        }
+        for (Node child : node.getChildren()) {
+            if (containsUnqualifiedTable(child)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

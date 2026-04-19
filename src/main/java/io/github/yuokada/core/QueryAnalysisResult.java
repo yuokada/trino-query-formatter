@@ -38,6 +38,19 @@ public final class QueryAnalysisResult {
      */
     private final Boolean hasWhereOnDelete; // null when not DELETE
     /**
+     * True when any ORDER BY clause uses a positional integer reference (e.g. ORDER BY 1).
+     */
+    private final boolean hasOrderByPositionalRef;
+    /**
+     * True when a top-level LIMIT exists without a corresponding ORDER BY.
+     */
+    private final boolean hasLimitWithoutOrderBy;
+    /**
+     * True when the query spans multiple explicit catalogs and contains at least one
+     * unqualified (fewer than 3 parts) table reference.
+     */
+    private final boolean hasUnqualifiedInMultiCatalog;
+    /**
      * Parse error message when parsing failed; otherwise null.
      */
     private final String parseError; // optional
@@ -88,6 +101,9 @@ public final class QueryAnalysisResult {
         this.usesSelectStar = b.usesSelectStar;
         this.hasLimit = b.hasLimit;
         this.hasWhereOnDelete = b.hasWhereOnDelete;
+        this.hasOrderByPositionalRef = b.hasOrderByPositionalRef;
+        this.hasLimitWithoutOrderBy = b.hasLimitWithoutOrderBy;
+        this.hasUnqualifiedInMultiCatalog = b.hasUnqualifiedInMultiCatalog;
         this.parseError = b.parseError;
         this.ctes.addAll(b.ctes);
         this.joins.addAll(b.joins);
@@ -210,6 +226,9 @@ public final class QueryAnalysisResult {
      *   <li>{@code W001} — WARNING: {@code SELECT *} detected; prefer explicit column list.</li>
      *   <li>{@code W002} — WARNING: unknown function detected; may be a custom UDF or typo.</li>
      *   <li>{@code W003} — WARNING: function arity does not match UDF catalog definition.</li>
+     *   <li>{@code W005} — WARNING: {@code ORDER BY} uses a positional reference.</li>
+     *   <li>{@code W006} — WARNING: {@code LIMIT} without {@code ORDER BY}.</li>
+     *   <li>{@code W007} — WARNING: unqualified table in a multi-catalog query.</li>
      *   <li>{@code E001} — ERROR: {@code DELETE} without {@code WHERE} will affect all rows.</li>
      * </ul>
      *
@@ -229,6 +248,18 @@ public final class QueryAnalysisResult {
         if (Boolean.FALSE.equals(this.hasWhereOnDelete)) {
             findings.add(new LintFinding("E001", LintFinding.Severity.ERROR,
                 "DELETE without WHERE clause will affect all rows"));
+        }
+        if (this.hasOrderByPositionalRef) {
+            findings.add(new LintFinding("W005", LintFinding.Severity.WARNING,
+                "ORDER BY positional reference; use explicit column names for clarity"));
+        }
+        if (this.hasLimitWithoutOrderBy) {
+            findings.add(new LintFinding("W006", LintFinding.Severity.WARNING,
+                "LIMIT without ORDER BY may produce non-deterministic results"));
+        }
+        if (this.hasUnqualifiedInMultiCatalog) {
+            findings.add(new LintFinding("W007", LintFinding.Severity.WARNING,
+                "Query spans multiple catalogs but contains unqualified table references"));
         }
         findings.addAll(this.remoteFindings);
         return Collections.unmodifiableList(findings);
@@ -251,6 +282,9 @@ public final class QueryAnalysisResult {
         b.usesSelectStar = this.usesSelectStar;
         b.hasLimit = this.hasLimit;
         b.hasWhereOnDelete = this.hasWhereOnDelete;
+        b.hasOrderByPositionalRef = this.hasOrderByPositionalRef;
+        b.hasLimitWithoutOrderBy = this.hasLimitWithoutOrderBy;
+        b.hasUnqualifiedInMultiCatalog = this.hasUnqualifiedInMultiCatalog;
         b.parseError = this.parseError;
         b.ctes.addAll(this.ctes);
         b.joins.addAll(this.joins);
@@ -373,6 +407,18 @@ public final class QueryAnalysisResult {
          */
         private Boolean hasWhereOnDelete;
         /**
+         * True when any ORDER BY uses a positional integer reference.
+         */
+        private boolean hasOrderByPositionalRef;
+        /**
+         * True when a top-level LIMIT exists without a corresponding ORDER BY.
+         */
+        private boolean hasLimitWithoutOrderBy;
+        /**
+         * True when the query spans multiple catalogs and has an unqualified table reference.
+         */
+        private boolean hasUnqualifiedInMultiCatalog;
+        /**
          * Parse error message (nullable).
          */
         private String parseError;
@@ -491,6 +537,33 @@ public final class QueryAnalysisResult {
          */
         public Builder hasWhereOnDelete(Boolean v) {
             this.hasWhereOnDelete = v;
+            return this;
+        }
+
+        /**
+         * @param v true when ORDER BY uses a positional integer reference
+         * @return Builder instance
+         */
+        public Builder hasOrderByPositionalRef(boolean v) {
+            this.hasOrderByPositionalRef = v;
+            return this;
+        }
+
+        /**
+         * @param v true when a top-level LIMIT exists without ORDER BY
+         * @return Builder instance
+         */
+        public Builder hasLimitWithoutOrderBy(boolean v) {
+            this.hasLimitWithoutOrderBy = v;
+            return this;
+        }
+
+        /**
+         * @param v true when query spans multiple catalogs with unqualified table references
+         * @return Builder instance
+         */
+        public Builder hasUnqualifiedInMultiCatalog(boolean v) {
+            this.hasUnqualifiedInMultiCatalog = v;
             return this;
         }
 
