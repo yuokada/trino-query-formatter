@@ -124,6 +124,8 @@ public final class TextAnalysisPrinter implements AnalysisPrinter {
         if (!findings.isEmpty()) {
             for (LintFinding f : findings) {
                 emitter.emit("Lint: " + f.toString());
+                emitter.emit("  Why: " + f.getHint());
+                emitter.emit("  Fix: " + f.getFix());
             }
         }
         if (r.getParseError() != null) {

@@ -1,0 +1,4 @@
+#!/usr/bin/env zsh
+# Example loader for Zsh completion.
+autoload -U +X bashcompinit && bashcompinit
+source <(trino-query-formatter generate-completion --shell zsh)

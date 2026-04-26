@@ -12,6 +12,9 @@ Quarkus, Picocli, and the `trino-parser`/`trino-cli` libraries.
 # Format a file
 java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar format query.sql
 
+# Show extended build/runtime metadata
+java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar --version --verbose
+
 # Read from stdin, write to stdout
 cat query.sql | java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar format -
 
@@ -193,6 +196,8 @@ analyze --details full query.sql
 # Flags: usesSelectStar=false, hasLimit=true, hasWhereOnDelete=null
 # Functions: scalar=[lower], aggregate=[count], window=[]
 # Lint: [WARNING] W001: SELECT * detected; prefer explicit column list
+#   Why: SELECT * couples queries to the table schema; adding a column can break consumers.
+#   Fix: List only the columns you need instead of using SELECT *.
 ```
 
 ### JSON output (full details)
@@ -202,8 +207,67 @@ analyze --format json --details full query.sql
 ```
 
 ```json
-{"queryType":"Query","catalogs":["catalog1"],"tables":["catalog1.s.orders"],"usesSelectStar":true,"ctes":[],"joins":[],"functionsScalar":[],"functionsAggregate":[],"functionsWindow":[],"writeTargets":[],"findings":[{"ruleId":"W001","severity":"WARNING","message":"SELECT * detected; prefer explicit column list"}],"hasLimit":false}
+{"queryType":"Query","catalogs":["catalog1"],"tables":["catalog1.s.orders"],"usesSelectStar":true,"ctes":[],"joins":[],"functionsScalar":[],"functionsAggregate":[],"functionsWindow":[],"writeTargets":[],"findings":[{"ruleId":"W001","severity":"WARNING","message":"SELECT * detected; prefer explicit column list","hint":"SELECT * couples queries to the table schema; adding a column can break consumers.","fix":"List only the columns you need instead of using SELECT *."}],"hasLimit":false}
 ```
+
+### Helpful option validation
+
+The CLI now emits explicit guidance for common option combinations:
+
+```bash
+analyze --format json --details basic query.sql
+# stderr: Warning: --details basic suppresses extended fields; use --details full for complete JSON.
+
+analyze --udf-catalog udf.yml query.sql
+# stderr: Info: --udf-catalog implies function existence checking; pass --validate-functions to also enable W002.
+```
+
+Missing files are also reported without a Java stack trace:
+
+```bash
+format missing.sql
+# stderr: Error: SQL file not found: missing.sql
+```
+
+## Shell completion
+
+The CLI provides a built-in `generate-completion` subcommand.
+
+### Bash
+
+```bash
+source <(trino-query-formatter generate-completion --shell bash)
+```
+
+To install it permanently:
+
+```bash
+trino-query-formatter generate-completion --shell bash > ~/.bash_completion.d/trino-query-formatter
+```
+
+### Zsh
+
+The generated script is bash-compatible and works in Zsh via `bashcompinit`.
+
+```bash
+autoload -U +X bashcompinit && bashcompinit
+source <(trino-query-formatter generate-completion --shell zsh)
+```
+
+To install it permanently:
+
+```bash
+autoload -U +X bashcompinit && bashcompinit
+trino-query-formatter generate-completion --shell zsh > ~/.zsh/completions/_trino-query-formatter
+```
+
+### Fish
+
+```bash
+trino-query-formatter generate-completion --shell fish > ~/.config/fish/completions/trino-query-formatter.fish
+```
+
+Example loader scripts are committed under [`completions/`](completions/).
 
 ### Multiple statements are rejected
 

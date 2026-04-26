@@ -65,6 +65,8 @@ class AnalyzeJsonFullExtendedTest {
         assertTrue(out.contains("\"findings\""), "findings key should be in JSON: " + out);
         assertTrue(out.contains("\"W001\""), "W001 rule ID should be in JSON: " + out);
         assertTrue(out.contains("\"WARNING\""), "WARNING severity should be in JSON: " + out);
+        assertTrue(out.contains("\"hint\""), "hint field should be in JSON: " + out);
+        assertTrue(out.contains("\"fix\""), "fix field should be in JSON: " + out);
     }
 
     @Test
@@ -99,4 +101,3 @@ class AnalyzeJsonFullExtendedTest {
         assertTrue(out.contains("\"findings\":[]"), "Empty findings array should be in JSON: " + out);
     }
 }
-
