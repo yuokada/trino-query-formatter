@@ -1,6 +1,9 @@
 package io.github.yuokada.subcommand;
 
 import io.github.yuokada.EntryCommand;
+import io.github.yuokada.config.AnalyzeConfig;
+import io.github.yuokada.config.ConfigException;
+import io.github.yuokada.config.LoadedProjectConfig;
 import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.QueryAnalysisResult;
@@ -28,6 +31,8 @@ import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 
 @CommandLine.Command(name = "analyze", description = "Analyze SQL query")
 public class Analyze implements Callable<Integer> {
@@ -42,6 +47,12 @@ public class Analyze implements Callable<Integer> {
      */
     @ParentCommand
     private EntryCommand entryCommand;
+
+    /**
+     * Command specification for checking matched CLI options.
+     */
+    @Spec
+    private CommandSpec spec;
 
     /**
      * The file to analyze.
@@ -152,6 +163,13 @@ public class Analyze implements Callable<Integer> {
 
     @Override
     public Integer call() throws IOException {
+        try {
+            applyConfigDefaults();
+        } catch (ConfigException e) {
+            System.err.println("Error: " + e.getMessage());
+            return ExitCodes.ERROR;
+        }
+
         AstView view;
         try {
             view = AstView.fromString(this.astView);
@@ -338,6 +356,40 @@ public class Analyze implements Callable<Integer> {
         } catch (IOException ignored) {
             return false;
         }
+    }
+
+    private void applyConfigDefaults() throws ConfigException {
+        if (this.entryCommand == null) {
+            return;
+        }
+        LoadedProjectConfig loadedConfig = this.entryCommand.getLoadedConfig();
+        if (loadedConfig == null) {
+            return;
+        }
+        AnalyzeConfig analyzeConfig = loadedConfig.getConfig().getAnalyze();
+        if (!isOptionMatched("--format") && analyzeConfig.getFormat() != null) {
+            this.format = analyzeConfig.getFormat();
+        }
+        if (!isOptionMatched("--details") && analyzeConfig.getDetails() != null) {
+            this.details = analyzeConfig.getDetails();
+        }
+        if (!isOptionMatched("--validate-functions")
+            && analyzeConfig.getValidateFunctions() != null) {
+            this.validateFunctions = analyzeConfig.getValidateFunctions();
+        }
+        if (!isOptionMatched("--udf-catalog") && analyzeConfig.getUdfCatalog() != null) {
+            this.udfCatalogPath = loadedConfig.resolvePath(analyzeConfig.getUdfCatalog()).toString();
+        }
+        if (!isOptionMatched("--server") && analyzeConfig.getServer() != null) {
+            this.serverOptions.setServer(analyzeConfig.getServer());
+        }
+    }
+
+    private boolean isOptionMatched(String name) {
+        return this.spec != null
+            && this.spec.commandLine() != null
+            && this.spec.commandLine().getParseResult() != null
+            && this.spec.commandLine().getParseResult().hasMatchedOption(name);
     }
 
     // Package-private setters to support testing without reflection.

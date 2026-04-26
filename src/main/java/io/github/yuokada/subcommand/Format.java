@@ -4,6 +4,9 @@ import static com.google.common.base.Preconditions.checkState;
 import static io.trino.sql.SqlFormatter.formatSql;
 
 import io.github.yuokada.EntryCommand;
+import io.github.yuokada.config.ConfigException;
+import io.github.yuokada.config.FormatConfig;
+import io.github.yuokada.config.LoadedProjectConfig;
 import io.github.yuokada.core.CommentPreservingFormatter;
 import io.github.yuokada.core.ExitCodes;
 import io.github.yuokada.core.KeywordCaseTransformer;
@@ -22,6 +25,8 @@ import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 
 /**
  * Subcommand that formats one or more SQL statements.
@@ -37,6 +42,12 @@ public class Format implements Callable<Integer> {
      */
     @ParentCommand
     private EntryCommand entryCommand;
+
+    /**
+     * Command specification for checking matched CLI options.
+     */
+    @Spec
+    private CommandSpec spec;
 
     /**
      * Shared SQL parser instance.
@@ -99,6 +110,13 @@ public class Format implements Callable<Integer> {
 
     @Override
     public Integer call() throws IOException {
+        try {
+            applyConfigDefaults();
+        } catch (ConfigException e) {
+            System.err.println("Error: " + e.getMessage());
+            return ExitCodes.ERROR;
+        }
+
         boolean isStdin = this.sqlFile.isEmpty() || this.sqlFile.equals("-");
 
         Integer validationResult = validateOptions(isStdin);
@@ -356,6 +374,33 @@ public class Format implements Callable<Integer> {
         } catch (IOException ignored) {
             return false;
         }
+    }
+
+    private void applyConfigDefaults() throws ConfigException {
+        if (this.entryCommand == null) {
+            return;
+        }
+        LoadedProjectConfig loadedConfig = this.entryCommand.getLoadedConfig();
+        if (loadedConfig == null) {
+            return;
+        }
+        FormatConfig formatConfig = loadedConfig.getConfig().getFormat();
+        if (!isOptionMatched("--check") && formatConfig.getCheck() != null) {
+            this.check = formatConfig.getCheck();
+        }
+        if (!isOptionMatched("--diff") && formatConfig.getDiff() != null) {
+            this.diff = formatConfig.getDiff();
+        }
+        if (!isOptionMatched("--keyword-case") && formatConfig.getKeywordCase() != null) {
+            this.keywordCase = formatConfig.getKeywordCase();
+        }
+    }
+
+    private boolean isOptionMatched(String name) {
+        return this.spec != null
+            && this.spec.commandLine() != null
+            && this.spec.commandLine().getParseResult() != null
+            && this.spec.commandLine().getParseResult().hasMatchedOption(name);
     }
 
     // Package-private setters to support testing without reflection.

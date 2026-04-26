@@ -269,6 +269,55 @@ trino-query-formatter generate-completion --shell fish > ~/.config/fish/completi
 
 Example loader scripts are committed under [`completions/`](completions/).
 
+## Project config
+
+Shared defaults can be stored in `.trino-query-formatter.yml`.
+
+Search order:
+
+1. `--config <path>`
+2. `.trino-query-formatter.yml` in the current working directory
+3. `.trino-query-formatter.yml` in the user home directory
+
+Precedence is `CLI args > config file > built-in defaults`.
+
+Example:
+
+```yaml
+analyze:
+  format: json
+  details: full
+  validate-functions: true
+  udf-catalog: udf.yml
+  server: trino.internal:8080
+
+format:
+  check: false
+  diff: false
+  keyword-case: upper
+
+lint:
+  disable-rules:
+    - W001
+  enable-rules: []
+```
+
+Notes:
+
+- Unknown config keys emit a warning and do not abort the command.
+- Relative paths like `udf-catalog: udf.yml` are resolved relative to the config file location.
+- CLI flags always override config values.
+
+Examples:
+
+```bash
+# Use defaults from the current directory config
+trino-query-formatter analyze query.sql
+
+# Use an explicit config file
+trino-query-formatter --config ci/trino-query-formatter.yml format query.sql
+```
+
 ### Multiple statements are rejected
 
 ```bash
