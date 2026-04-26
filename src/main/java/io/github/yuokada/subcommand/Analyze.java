@@ -221,6 +221,10 @@ public class Analyze implements Callable<Integer> {
         if (statements.isEmpty()) {
             return ExitCode.OK;
         }
+        if (isJsonFormat() && isBasicDetails() && this.dirPath == null) {
+            System.err.println(
+                "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
+        }
 
         Map<String, UdfDefinition> udfCatalog = loadUdfCatalog(this.udfCatalogPath);
 
@@ -293,10 +297,6 @@ public class Analyze implements Callable<Integer> {
                     "Info: --udf-catalog implies function existence checking; pass "
                         + "--validate-functions to also enable W002.");
             }
-        }
-        if (isJsonFormat() && isBasicDetails()) {
-            System.err.println(
-                "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
         }
         if (this.serverOptions != null && this.serverOptions.isEnabled() && !isJsonFormat()
             && !isFullDetails()) {

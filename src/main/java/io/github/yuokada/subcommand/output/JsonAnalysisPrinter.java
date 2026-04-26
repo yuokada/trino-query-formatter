@@ -106,6 +106,10 @@ public final class JsonAnalysisPrinter implements AnalysisPrinter {
             first = false;
         }
         sb.append(']');
+        if (r.getParseError() != null) {
+            sb.append(',').append("\"parseError\":\"")
+                .append(JsonUtil.escape(r.getParseError())).append("\"");
+        }
         sb.append('}');
         return sb.toString();
     }
