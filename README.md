@@ -37,12 +37,17 @@ format [options] [<file>]
 | Argument / Option | Default | Description |
 |---|---|---|
 | `<file>` | stdin | SQL file to format. Use `-` to read from stdin explicitly. |
+| `--dir <path>` | — | Recursively process all `*.sql` files under this directory. |
+| `--exclude <glob>` | — | Exclude glob for `--dir` mode. Repeatable. |
+| `--summary` | false | Print compact file-count summary at the end of `--dir` mode. |
 | `-o, --output <path>` | stdout | Write formatted output to this file instead of stdout. |
 | `--check` | false | Check if the file is already formatted. Exits `1` when reformatting is needed. Not supported for stdin. |
 | `--diff` | false | Print a unified diff of formatting changes. Exits `1` when differences are found. Not supported for stdin. Color auto-detected via terminal. |
 | `--keyword-case <mode>` | `upper` | Keyword case: `upper` (default), `lower`, or `keep` (preserve original casing). |
 | `--indent-size <n>` | `2` | Spaces per indentation level. Must be ≥ 1. |
 | `--max-line-length <n>` | `0` | Warn to stderr when a formatted line exceeds this length. `0` = unlimited. |
+
+`--dir` mode is intended for CI and currently requires either `--check` or `--diff`.
 
 ### Before / After example
 
@@ -156,7 +161,10 @@ analyze [options] [<file>]
 | Option | Default | Description |
 |---|---|---|
 | `<file>` | stdin | SQL file to analyze. Reads from stdin when omitted. |
-| `--format <fmt>` | `text` | Output format: `text` or `json` (single object for the single query). |
+| `--dir <path>` | — | Recursively analyze all `*.sql` files under this directory. |
+| `--exclude <glob>` | — | Exclude glob for `--dir` mode. Repeatable. |
+| `--summary` | false | Print compact file-count summary (`text`) or append summary object (`json`) in `--dir` mode. |
+| `--format <fmt>` | `text` | Output format: `text` or `json` (single object in single-file mode, JSON array in `--dir` mode). |
 | `--details <level>` | `basic` | Detail level: `basic` (catalogs only) or `full` (all fields + lint). |
 | `--output <path>` | stdout | Write output to this file instead of stdout. |
 | `--show-ast` | false | Print the AST for the query. |
@@ -209,6 +217,17 @@ analyze --format json --details full query.sql
 ```json
 {"queryType":"Query","catalogs":["catalog1"],"tables":["catalog1.s.orders"],"usesSelectStar":true,"ctes":[],"joins":[],"functionsScalar":[],"functionsAggregate":[],"functionsWindow":[],"writeTargets":[],"findings":[{"ruleId":"W001","severity":"WARNING","message":"SELECT * detected; prefer explicit column list","hint":"SELECT * couples queries to the table schema; adding a column can break consumers.","fix":"List only the columns you need instead of using SELECT *."}],"hasLimit":false}
 ```
+
+### Directory mode for CI (analyze)
+
+```bash
+analyze --dir sql --exclude "**/test/**" --format json --summary
+```
+
+`--dir` returns the highest severity across files:
+- `0`: all clean
+- `1`: at least one warning
+- `2`: at least one error
 
 ### Helpful option validation
 

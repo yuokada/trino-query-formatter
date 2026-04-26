@@ -6,15 +6,20 @@ import io.github.yuokada.config.ConfigException;
 import io.github.yuokada.config.LoadedProjectConfig;
 import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.ExitCodes;
+import io.github.yuokada.core.LintFinding;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
 import io.github.yuokada.core.TrinoRemoteValidator;
 import io.github.yuokada.core.UdfCatalog;
 import io.github.yuokada.core.UdfDefinition;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
+import io.github.yuokada.subcommand.util.SqlFileCollector;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +47,10 @@ public class Analyze implements Callable<Integer> {
         "analyze supports exactly one query; found multiple statements";
     /** Exit code returned when more than one statement is supplied. */
     private static final int MULTIPLE_STATEMENTS_EXIT_CODE = 1;
+    /**
+     * Shared JSON mapper for directory-mode JSON output.
+     */
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
      * The parent command.
@@ -58,7 +68,28 @@ public class Analyze implements Callable<Integer> {
      * The file to analyze.
      */
     @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
-    private String sqlFile;
+    private String sqlFile = "";
+
+    /**
+     * Directory containing SQL files to analyze recursively.
+     */
+    @CommandLine.Option(names = {"--dir"},
+        description = "Analyze every *.sql file recursively under this directory.")
+    private String dirPath;
+
+    /**
+     * Glob exclude patterns for directory mode. Repeatable.
+     */
+    @CommandLine.Option(names = {"--exclude"},
+        description = "Exclude glob pattern for --dir mode. Repeatable.")
+    private List<String> excludePatterns = new ArrayList<>();
+
+    /**
+     * Print compact summary at the end of directory runs.
+     */
+    @CommandLine.Option(names = {"--summary"},
+        description = "Print a compact summary in --dir mode.")
+    private boolean summary;
 
     /**
      * Output format. Supported: text, json.
@@ -67,7 +98,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--format"},
         defaultValue = "text",
         description = "Output format: text|json")
-    private String format;
+    private String format = "text";
 
     /**
      * When true, also prints the AST of each statement.
@@ -85,7 +116,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--details"},
         defaultValue = "basic",
         description = "Detail level: basic|full")
-    private String details;
+    private String details = "basic";
 
     /**
      * If specified, writes the output to the given file instead of stdout.
@@ -183,6 +214,10 @@ public class Analyze implements Callable<Integer> {
             return validationResult;
         }
 
+        if (this.dirPath != null && !this.dirPath.isBlank()) {
+            return runDirectoryMode(view);
+        }
+
         List<String> statements = collectStatements();
         if (statements.size() > 1) {
             System.err.println(MULTIPLE_STATEMENTS_ERROR_MESSAGE);
@@ -191,6 +226,10 @@ public class Analyze implements Callable<Integer> {
 
         if (statements.isEmpty()) {
             return ExitCode.OK;
+        }
+        if (isJsonFormat() && isBasicDetails()) {
+            System.err.println(
+                "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
         }
 
         Map<String, UdfDefinition> udfCatalog = loadUdfCatalog(this.udfCatalogPath);
@@ -216,16 +255,31 @@ public class Analyze implements Callable<Integer> {
             QueryAnalysisResult result =
                 QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema,
                     effectiveKnown, udfCatalog);
-            // Phase 2: remote validation via EXPLAIN (TYPE VALIDATE)
-            result = TrinoRemoteValidator.validate(
-                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+            result = validateRemotelyIfNeeded(result, statement);
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
     }
 
     private Integer validateOptions() {
-        if (!this.sqlFile.isEmpty()) {
+        boolean hasDir = this.dirPath != null && !this.dirPath.isBlank();
+        boolean hasFile = this.sqlFile != null && !this.sqlFile.isEmpty();
+        if (hasDir && hasFile) {
+            System.err.println("Error: provide either <file> or --dir, not both.");
+            return ExitCodes.ERROR;
+        }
+        if (hasDir) {
+            Path dir = Path.of(this.dirPath);
+            if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+                System.err.println("Error: directory not found: " + this.dirPath);
+                return ExitCodes.ERROR;
+            }
+            if (stdinHasData()) {
+                System.err.println("Error: provide either --dir or stdin, not both.");
+                return ExitCodes.ERROR;
+            }
+        }
+        if (hasFile) {
             Path sqlPath = Path.of(this.sqlFile);
             if (!Files.exists(sqlPath)) {
                 System.err.println("Error: SQL file not found: " + this.sqlFile);
@@ -248,16 +302,250 @@ public class Analyze implements Callable<Integer> {
                         + "--validate-functions to also enable W002.");
             }
         }
-        if (isJsonFormat() && isBasicDetails()) {
-            System.err.println(
-                "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
-        }
         if (this.serverOptions != null && this.serverOptions.isEnabled() && !isJsonFormat()
             && !isFullDetails()) {
             System.err.println(
                 "Warning: remote findings are only shown in --details full mode for text output.");
         }
         return null;
+    }
+
+    private Integer runDirectoryMode(AstView view) throws IOException {
+        Path baseDir = Path.of(this.dirPath).toAbsolutePath().normalize();
+        List<Path> files = SqlFileCollector.collect(this.dirPath, this.excludePatterns);
+        SummaryCounter counter = new SummaryCounter();
+
+        Map<String, UdfDefinition> udfCatalog = loadUdfCatalog(this.udfCatalogPath);
+        Set<String> effectiveKnown = null;
+        if (this.validateFunctions) {
+            effectiveKnown = parseKnownFunctions(this.knownFunctionsInput);
+            if (udfCatalog != null) {
+                effectiveKnown.addAll(udfCatalog.keySet());
+            }
+        }
+
+        try (OutputEmitter emitter = new OutputEmitter(outputPath)) {
+            if (isJsonFormat()) {
+                runDirectoryJson(view, baseDir, files, counter, effectiveKnown, udfCatalog, emitter);
+            } else {
+                runDirectoryText(view, baseDir, files, counter, effectiveKnown, udfCatalog, emitter);
+            }
+            if (this.summary && !isJsonFormat()) {
+                emitTextSummary(emitter, counter);
+            }
+        }
+        return counter.toExitCode();
+    }
+
+    private void runDirectoryText(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
+        throws IOException {
+        AnalysisPrinter printer =
+            new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view, this.astDepth);
+        for (Path file : files) {
+            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
+                udfCatalog);
+            try {
+                emitter.emit("===== " + analysis.label() + " =====");
+                if (analysis.errorMessage() != null) {
+                    emitter.emit("Error: Failed to analyze " + analysis.label() + ": "
+                        + analysis.errorMessage());
+                    counter.addError();
+                    continue;
+                }
+                if (analysis.multipleStatements()) {
+                    emitter.emit("Error: " + MULTIPLE_STATEMENTS_ERROR_MESSAGE);
+                    counter.addError();
+                    continue;
+                }
+                if (analysis.empty()) {
+                    emitter.emit("No complete statements.");
+                    counter.addClean();
+                    continue;
+                }
+                printer.printStatement(analysis.result(), null, analysis.statement());
+                counter.addResult(analysis.result());
+            } catch (IOException | RuntimeException e) {
+                emitter.emit("Error: Failed to analyze " + analysis.label() + ": "
+                    + errorMessage(e));
+                counter.addError();
+            }
+        }
+    }
+
+    private void runDirectoryJson(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
+        throws IOException {
+        emitter.emit("[");
+        boolean hasItem = false;
+        for (Path file : files) {
+            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
+                udfCatalog);
+            String itemJson;
+            try {
+                itemJson = buildDirectoryJsonItem(analysis, view);
+            } catch (RuntimeException e) {
+                itemJson = buildErrorDirectoryJson(analysis.label(), errorMessage(e));
+            }
+            if (hasItem) {
+                emitter.emit("," + itemJson);
+            } else {
+                emitter.emit(itemJson);
+                hasItem = true;
+            }
+            if (analysis.errorMessage() != null || analysis.multipleStatements()) {
+                counter.addError();
+            } else if (analysis.empty()) {
+                counter.addClean();
+            } else {
+                counter.addResult(analysis.result());
+            }
+        }
+        if (this.summary) {
+            String summaryJson = counter.toJsonSummaryItem();
+            if (hasItem) {
+                emitter.emit("," + summaryJson);
+            } else {
+                emitter.emit(summaryJson);
+                hasItem = true;
+            }
+        }
+        emitter.emit("]");
+    }
+
+    private String buildJsonResult(QueryAnalysisResult result, String originalSql, AstView view) {
+        if (isBasicDetails()) {
+            ObjectNode node = JSON_MAPPER.createObjectNode();
+            if (this.showAst) {
+                node.put("ast", limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
+            }
+            node.put("queryType", result.getQueryType());
+            node.putArray("catalogs").addAll(
+                result.getCatalogs().stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            if (result.getParseError() != null) {
+                node.put("parseError", result.getParseError());
+            }
+            return toJsonString(node);
+        }
+        try {
+            JsonNode node = JSON_MAPPER.readTree(result.toJson());
+            if (!(node instanceof ObjectNode objectNode)) {
+                throw new IllegalStateException("analysis JSON is not an object");
+            }
+            if (this.showAst) {
+                objectNode.put("ast",
+                    limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
+            }
+            return toJsonString(objectNode);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to build analysis JSON", e);
+        }
+    }
+
+    private String limitAst(String ast) {
+        if (ast == null) {
+            return "";
+        }
+        if (ast.length() <= this.astLimit) {
+            return ast;
+        }
+        return ast.substring(0, this.astLimit) + "\n... (truncated)";
+    }
+
+    private DirectoryAnalysis analyzeDirectoryFile(Path baseDir, Path file,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog) {
+        String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+        try {
+            List<String> statements = collectStatementsFromFile(file.toString());
+            if (statements.size() > 1) {
+                return DirectoryAnalysis.multipleStatements(label);
+            }
+            if (statements.isEmpty()) {
+                return DirectoryAnalysis.empty(label);
+            }
+            String statement = statements.get(0);
+            QueryAnalysisResult result = QueryAnalyzer.analyze(
+                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
+            result = validateRemotelyIfNeeded(result, statement);
+            return DirectoryAnalysis.result(label, statement, result, SummarySeverity.from(result));
+        } catch (IOException | RuntimeException e) {
+            return DirectoryAnalysis.error(label, errorMessage(e));
+        }
+    }
+
+    private QueryAnalysisResult validateRemotelyIfNeeded(QueryAnalysisResult result, String statement) {
+        if (result.getParseError() != null) {
+            return result;
+        }
+        return TrinoRemoteValidator.validate(
+            result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+    }
+
+    private String buildDirectoryJsonItem(DirectoryAnalysis analysis, AstView view) {
+        ObjectNode node = JSON_MAPPER.createObjectNode();
+        node.put("file", analysis.label());
+        if (analysis.errorMessage() != null) {
+            node.put("severity", "ERROR");
+            node.put("error", analysis.errorMessage());
+            return toJsonString(node);
+        }
+        if (analysis.empty()) {
+            node.put("severity", "OK");
+            node.put("status", "empty");
+            return toJsonString(node);
+        }
+        node.put("severity", analysis.severity().name());
+        try {
+            JsonNode resultNode = JSON_MAPPER.readTree(buildJsonResult(analysis.result(),
+                analysis.statement(), view));
+            node.set("result", resultNode);
+            return toJsonString(node);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to build directory JSON", e);
+        }
+    }
+
+    private String buildErrorDirectoryJson(String label, String message) {
+        ObjectNode node = JSON_MAPPER.createObjectNode();
+        node.put("file", label);
+        node.put("severity", "ERROR");
+        node.put("error", message);
+        return toJsonString(node);
+    }
+
+    private static String toJsonString(ObjectNode node) {
+        try {
+            return JSON_MAPPER.writeValueAsString(node);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to serialise JSON", e);
+        }
+    }
+
+    private static String errorMessage(Throwable throwable) {
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            return throwable.getClass().getSimpleName();
+        }
+        return message;
+    }
+
+    private void emitTextSummary(OutputEmitter emitter, SummaryCounter counter) throws IOException {
+        emitter.emit("Files analyzed : " + counter.totalFiles);
+        emitter.emit("  Clean        : " + counter.cleanFiles);
+        emitter.emit("  Warnings     : " + counter.warningFiles
+            + formatRules(counter.warningRules));
+        emitter.emit("  Errors       : " + counter.errorFiles + formatRules(counter.errorRules));
+        emitter.emit("Exit code: " + counter.toExitCode());
+    }
+
+    private static String formatRules(Set<String> rules) {
+        if (rules.isEmpty()) {
+            return "";
+        }
+        return " (" + String.join(", ", rules) + ")";
     }
 
     /**
@@ -314,11 +602,17 @@ public class Analyze implements Callable<Integer> {
 
     private List<String> collectStatements() throws IOException {
         List<String> statements = new ArrayList<>();
-        if (!sqlFile.isEmpty()) {
+        if (this.sqlFile != null && !this.sqlFile.isEmpty()) {
             SqlInput.forEachStatementFromFile(sqlFile, statements::add);
             return statements;
         }
         SqlInput.forEachStatementFromStdin((idx, stmt) -> statements.add(stmt));
+        return statements;
+    }
+
+    private List<String> collectStatementsFromFile(String filePath) throws IOException {
+        List<String> statements = new ArrayList<>();
+        SqlInput.forEachStatementFromFile(filePath, statements::add);
         return statements;
     }
 
@@ -449,5 +743,138 @@ public class Analyze implements Callable<Integer> {
 
     void setServerOptions(TrinoConnectionOptions serverOptions) {
         this.serverOptions = serverOptions;
+    }
+
+    void setDirPath(String dirPath) {
+        this.dirPath = dirPath;
+    }
+
+    void setExcludePatterns(List<String> excludePatterns) {
+        this.excludePatterns = excludePatterns;
+    }
+
+    void setSummary(boolean summary) {
+        this.summary = summary;
+    }
+
+    private enum SummarySeverity {
+        OK,
+        WARNING,
+        ERROR;
+
+        static SummarySeverity from(QueryAnalysisResult result) {
+            if (result.getParseError() != null) {
+                return ERROR;
+            }
+            SummarySeverity severity = OK;
+            for (LintFinding finding : result.getFindings()) {
+                if (finding.getSeverity() == LintFinding.Severity.ERROR) {
+                    return ERROR;
+                }
+                if (finding.getSeverity() == LintFinding.Severity.WARNING) {
+                    severity = WARNING;
+                }
+            }
+            return severity;
+        }
+    }
+
+    private static final class SummaryCounter {
+        private int totalFiles;
+        private int cleanFiles;
+        private int warningFiles;
+        private int errorFiles;
+        private final Set<String> warningRules = new LinkedHashSet<>();
+        private final Set<String> errorRules = new LinkedHashSet<>();
+
+        private void addClean() {
+            this.totalFiles++;
+            this.cleanFiles++;
+        }
+
+        private void addError() {
+            this.totalFiles++;
+            this.errorFiles++;
+        }
+
+        private void addResult(QueryAnalysisResult result) {
+            this.totalFiles++;
+            SummarySeverity severity = SummarySeverity.from(result);
+            if (severity == SummarySeverity.ERROR) {
+                this.errorFiles++;
+            } else if (severity == SummarySeverity.WARNING) {
+                this.warningFiles++;
+            } else {
+                this.cleanFiles++;
+            }
+            for (LintFinding finding : result.getFindings()) {
+                if (finding.getSeverity() == LintFinding.Severity.ERROR) {
+                    this.errorRules.add(finding.getRuleId());
+                } else if (finding.getSeverity() == LintFinding.Severity.WARNING) {
+                    this.warningRules.add(finding.getRuleId());
+                }
+            }
+        }
+
+        private int toExitCode() {
+            if (this.errorFiles > 0) {
+                return ExitCodes.ERROR;
+            }
+            if (this.warningFiles > 0) {
+                return ExitCodes.WARNING;
+            }
+            return ExitCodes.OK;
+        }
+
+        private String toJsonSummaryItem() {
+            ObjectNode root = JSON_MAPPER.createObjectNode();
+            ObjectNode summary = root.putObject("summary");
+            summary.put("filesAnalyzed", this.totalFiles);
+            summary.put("clean", this.cleanFiles);
+            summary.put("warnings", this.warningFiles);
+            summary.put("errors", this.errorFiles);
+            summary.putArray("warningRules").addAll(
+                this.warningRules.stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            summary.putArray("errorRules").addAll(
+                this.errorRules.stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            summary.put("exitCode", toExitCode());
+            return toJsonString(root);
+        }
+    }
+
+    private record DirectoryAnalysis(
+        String label,
+        String statement,
+        QueryAnalysisResult result,
+        SummarySeverity severity,
+        String errorMessage,
+        boolean empty,
+        boolean multipleStatements) {
+
+        static DirectoryAnalysis result(String label, String statement, QueryAnalysisResult result,
+            SummarySeverity severity) {
+            return new DirectoryAnalysis(label, statement, result, severity, null, false, false);
+        }
+
+        static DirectoryAnalysis empty(String label) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.OK, null, true, false);
+        }
+
+        static DirectoryAnalysis multipleStatements(String label) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.ERROR,
+                MULTIPLE_STATEMENTS_ERROR_MESSAGE, false, true);
+        }
+
+        static DirectoryAnalysis error(String label, String errorMessage) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.ERROR, errorMessage,
+                false, false);
+        }
+
     }
 }
