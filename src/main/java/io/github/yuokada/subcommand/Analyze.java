@@ -14,6 +14,7 @@ import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -159,6 +160,11 @@ public class Analyze implements Callable<Integer> {
             return ExitCodes.ERROR;
         }
 
+        Integer validationResult = validateOptions();
+        if (validationResult != null) {
+            return validationResult;
+        }
+
         List<String> statements = collectStatements();
         if (statements.size() > 1) {
             System.err.println(MULTIPLE_STATEMENTS_ERROR_MESSAGE);
@@ -198,6 +204,42 @@ public class Analyze implements Callable<Integer> {
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
+    }
+
+    private Integer validateOptions() {
+        if (!this.sqlFile.isEmpty()) {
+            Path sqlPath = Path.of(this.sqlFile);
+            if (!Files.exists(sqlPath)) {
+                System.err.println("Error: SQL file not found: " + this.sqlFile);
+                return ExitCodes.ERROR;
+            }
+            if (stdinHasData()) {
+                System.err.println("Error: provide either <file> or stdin, not both.");
+                return ExitCodes.ERROR;
+            }
+        }
+        if (this.udfCatalogPath != null && !this.udfCatalogPath.isBlank()) {
+            Path udfPath = Path.of(this.udfCatalogPath);
+            if (!Files.exists(udfPath)) {
+                System.err.println("Error: UDF catalog file not found: " + this.udfCatalogPath);
+                return ExitCodes.ERROR;
+            }
+            if (!this.validateFunctions) {
+                System.err.println(
+                    "Info: --udf-catalog implies function existence checking; pass "
+                        + "--validate-functions to also enable W002.");
+            }
+        }
+        if (isJsonFormat() && isBasicDetails()) {
+            System.err.println(
+                "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
+        }
+        if (this.serverOptions != null && this.serverOptions.isEnabled() && !isJsonFormat()
+            && !isFullDetails()) {
+            System.err.println(
+                "Warning: remote findings are only shown in --details full mode for text output.");
+        }
+        return null;
     }
 
     /**
@@ -287,6 +329,15 @@ public class Analyze implements Callable<Integer> {
      */
     private boolean isFullDetails() {
         return "full".equalsIgnoreCase(details);
+    }
+
+    private static boolean stdinHasData() {
+        try {
+            InputStream in = System.in;
+            return in != null && in.available() > 0;
+        } catch (IOException ignored) {
+            return false;
+        }
     }
 
     // Package-private setters to support testing without reflection.

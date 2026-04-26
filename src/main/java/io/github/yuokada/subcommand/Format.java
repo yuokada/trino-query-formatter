@@ -14,6 +14,9 @@ import io.github.yuokada.subcommand.util.SqlInput;
 import io.trino.sql.parser.SqlParser;
 import io.trino.sql.tree.Statement;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
@@ -98,6 +101,11 @@ public class Format implements Callable<Integer> {
     public Integer call() throws IOException {
         boolean isStdin = this.sqlFile.isEmpty() || this.sqlFile.equals("-");
 
+        Integer validationResult = validateOptions(isStdin);
+        if (validationResult != null) {
+            return validationResult;
+        }
+
         KeywordCase kc;
         try {
             kc = KeywordCase.fromString(this.keywordCase);
@@ -151,6 +159,21 @@ public class Format implements Callable<Integer> {
             }
         }
         return ExitCodes.OK;
+    }
+
+    private Integer validateOptions(boolean isStdin) {
+        if (!isStdin) {
+            Path sqlPath = Path.of(this.sqlFile);
+            if (!Files.exists(sqlPath)) {
+                System.err.println("Error: SQL file not found: " + this.sqlFile);
+                return ExitCodes.ERROR;
+            }
+            if (stdinHasData()) {
+                System.err.println("Error: provide either <file> or stdin, not both.");
+                return ExitCodes.ERROR;
+            }
+        }
+        return null;
     }
 
     /**
@@ -324,6 +347,15 @@ public class Format implements Callable<Integer> {
      */
     private boolean isQuiet() {
         return this.entryCommand != null && this.entryCommand.isQuiet();
+    }
+
+    private static boolean stdinHasData() {
+        try {
+            InputStream in = System.in;
+            return in != null && in.available() > 0;
+        } catch (IOException ignored) {
+            return false;
+        }
     }
 
     // Package-private setters to support testing without reflection.

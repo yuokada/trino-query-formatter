@@ -68,22 +68,35 @@ class EntryCommandTest {
 
     @Test
     void helpFlag_printsUsage() {
-        int exit = new CommandLine(new EntryCommand()).execute("--help");
-        String out = outContent.toString();
+        int exit = EntryCommand.newCommandLine().execute("--help");
+        String out = outContent.toString() + errContent.toString();
         // Usage text contains subcommands and description
         org.junit.jupiter.api.Assertions.assertTrue(out.contains("Usage:"));
         org.junit.jupiter.api.Assertions.assertTrue(out.contains("format"));
         org.junit.jupiter.api.Assertions.assertTrue(out.contains("analyze"));
-        org.junit.jupiter.api.Assertions.assertEquals(0, exit);
+        org.junit.jupiter.api.Assertions.assertEquals(2, exit);
     }
 
     @Test
     void versionFlag_printsVersion() {
-        int exit = new CommandLine(new EntryCommand()).execute("-V");
+        int exit = EntryCommand.newCommandLine().execute("-V");
         String out = outContent.toString();
         org.junit.jupiter.api.Assertions.assertTrue(out.contains("trino-query-formatter"));
-        org.junit.jupiter.api.Assertions.assertTrue(out.contains("("));
-        org.junit.jupiter.api.Assertions.assertTrue(out.contains(")"));
+        org.junit.jupiter.api.Assertions.assertFalse(out.contains("Git commit"));
+        org.junit.jupiter.api.Assertions.assertFalse(out.contains("("));
+        org.junit.jupiter.api.Assertions.assertEquals(0, exit);
+    }
+
+    @Test
+    void versionVerbose_printsExtendedMetadata() {
+        int exit = EntryCommand.newCommandLine().execute("-V", "--verbose");
+        String out = outContent.toString();
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("Git commit"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("Build date"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("Java runtime"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("Quarkus"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("trino-parser"));
+        org.junit.jupiter.api.Assertions.assertTrue(out.contains("trino-cli"));
         org.junit.jupiter.api.Assertions.assertEquals(0, exit);
     }
 

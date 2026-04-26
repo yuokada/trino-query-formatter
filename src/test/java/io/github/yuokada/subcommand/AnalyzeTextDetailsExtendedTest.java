@@ -54,5 +54,7 @@ class AnalyzeTextDetailsExtendedTest {
         assertTrue(out.toLowerCase().contains("scalar=[lower]"));
         assertTrue(out.toLowerCase().contains("aggregate=[count]"));
         assertTrue(out.toLowerCase().contains("window=[row_number]"));
+        assertTrue(out.contains("  Why: "));
+        assertTrue(out.contains("  Fix: "));
     }
 }
