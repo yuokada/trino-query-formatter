@@ -15,6 +15,7 @@
         <quarkus.platform.version>3.27.3</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.5</surefire-plugin.version>
+        <surefire-report-plugin.version>3.5.5</surefire-report-plugin.version>
         <checkstyle.version>3.6.0</checkstyle.version>
         <git-commit-id-plugin.version>9.1.0</git-commit-id-plugin.version>
         <!-- App specific properties -->
@@ -217,6 +218,16 @@
             </plugin>
         </plugins>
     </build>
+
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>${surefire-report-plugin.version}</version>
+            </plugin>
+        </plugins>
+    </reporting>
 
     <profiles>
         <profile>
