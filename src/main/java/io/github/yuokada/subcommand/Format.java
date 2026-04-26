@@ -13,6 +13,7 @@ import io.github.yuokada.core.KeywordCaseTransformer;
 import io.github.yuokada.core.UnifiedDiff;
 import io.github.yuokada.core.KeywordCaseTransformer.KeywordCase;
 import io.github.yuokada.subcommand.output.OutputEmitter;
+import io.github.yuokada.subcommand.util.SqlFileCollector;
 import io.github.yuokada.subcommand.util.SqlInput;
 import io.trino.sql.parser.SqlParser;
 import io.trino.sql.tree.Statement;
@@ -20,7 +21,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
@@ -59,7 +62,28 @@ public class Format implements Callable<Integer> {
      */
     @Parameters(paramLabel = "<file>", defaultValue = "",
         description = "A query file. Use '-' for stdin.")
-    private String sqlFile;
+    private String sqlFile = "";
+
+    /**
+     * Directory containing SQL files to process recursively.
+     */
+    @CommandLine.Option(names = {"--dir"},
+        description = "Process every *.sql file recursively under this directory.")
+    private String dirPath;
+
+    /**
+     * Glob exclude patterns for directory mode. Repeatable.
+     */
+    @CommandLine.Option(names = {"--exclude"},
+        description = "Exclude glob pattern for --dir mode. Repeatable.")
+    private List<String> excludePatterns = new ArrayList<>();
+
+    /**
+     * Print compact summary at the end of directory runs.
+     */
+    @CommandLine.Option(names = {"--summary"},
+        description = "Print a compact summary in --dir mode.")
+    private boolean summary;
 
     /**
      * Output file path. When null or empty, writes to stdout.
@@ -116,13 +140,15 @@ public class Format implements Callable<Integer> {
             System.err.println("Error: " + e.getMessage());
             return ExitCodes.ERROR;
         }
+        if (this.dirPath != null && !this.dirPath.isBlank()) {
+            return runDirectoryMode();
+        }
 
-        boolean isStdin = this.sqlFile.isEmpty() || this.sqlFile.equals("-");
-
-        Integer validationResult = validateOptions(isStdin);
+        Integer validationResult = validateOptions();
         if (validationResult != null) {
             return validationResult;
         }
+        boolean isStdin = this.sqlFile.isEmpty() || this.sqlFile.equals("-");
 
         KeywordCase kc;
         try {
@@ -179,7 +205,34 @@ public class Format implements Callable<Integer> {
         return ExitCodes.OK;
     }
 
-    private Integer validateOptions(boolean isStdin) {
+    private Integer validateOptions() {
+        boolean hasDir = this.dirPath != null && !this.dirPath.isBlank();
+        boolean isStdin = this.sqlFile == null || this.sqlFile.isEmpty() || this.sqlFile.equals("-");
+        boolean hasFile = !isStdin;
+        if (hasDir && hasFile) {
+            System.err.println("Error: provide either <file> or --dir, not both.");
+            return ExitCodes.ERROR;
+        }
+        if (hasDir) {
+            Path dir = Path.of(this.dirPath);
+            if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+                System.err.println("Error: directory not found: " + this.dirPath);
+                return ExitCodes.ERROR;
+            }
+            if (stdinHasData()) {
+                System.err.println("Error: provide either --dir or stdin, not both.");
+                return ExitCodes.ERROR;
+            }
+            if (!this.check && !this.diff) {
+                System.err.println("Error: --dir mode requires --check or --diff.");
+                return ExitCodes.ERROR;
+            }
+            if (this.outputPath != null && !this.outputPath.isBlank()) {
+                System.err.println("Error: --output is not supported with --dir.");
+                return ExitCodes.ERROR;
+            }
+            return null;
+        }
         if (!isStdin) {
             Path sqlPath = Path.of(this.sqlFile);
             if (!Files.exists(sqlPath)) {
@@ -192,6 +245,69 @@ public class Format implements Callable<Integer> {
             }
         }
         return null;
+    }
+
+    private Integer runDirectoryMode() throws IOException {
+        Integer validationResult = validateOptions();
+        if (validationResult != null) {
+            return validationResult;
+        }
+
+        KeywordCase kc;
+        try {
+            kc = KeywordCase.fromString(this.keywordCase);
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            return ExitCodes.ERROR;
+        }
+
+        Path baseDir = Path.of(this.dirPath).toAbsolutePath().normalize();
+        List<Path> files = SqlFileCollector.collect(this.dirPath, this.excludePatterns);
+        int clean = 0;
+        int warning = 0;
+        int error = 0;
+
+        for (Path file : files) {
+            String relative = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+            try {
+                int code;
+                if (this.diff) {
+                    System.out.println("===== " + relative + " =====");
+                    code = runDiffMode(file.toString(), kc);
+                } else {
+                    code = runCheckMode(file.toString(), kc);
+                }
+                if (code == ExitCodes.ERROR) {
+                    error++;
+                } else if (code == ExitCodes.WARNING) {
+                    warning++;
+                } else {
+                    clean++;
+                }
+            } catch (Exception e) {
+                System.err.println("Error: failed to process " + relative + ": " + e.getMessage());
+                error++;
+            }
+        }
+
+        int exitCode;
+        if (error > 0) {
+            exitCode = ExitCodes.ERROR;
+        } else if (warning > 0) {
+            exitCode = ExitCodes.WARNING;
+        } else {
+            exitCode = ExitCodes.OK;
+        }
+
+        if (this.summary) {
+            int total = clean + warning + error;
+            System.out.println("Files analyzed : " + total);
+            System.out.println("  Clean        : " + clean);
+            System.out.println("  Warnings     : " + warning);
+            System.out.println("  Errors       : " + error);
+            System.out.println("Exit code: " + exitCode);
+        }
+        return exitCode;
     }
 
     /**
@@ -431,5 +547,17 @@ public class Format implements Callable<Integer> {
 
     void setDiff(boolean value) {
         this.diff = value;
+    }
+
+    void setDirPath(String value) {
+        this.dirPath = value;
+    }
+
+    void setExcludePatterns(List<String> value) {
+        this.excludePatterns = value;
+    }
+
+    void setSummary(boolean value) {
+        this.summary = value;
     }
 }

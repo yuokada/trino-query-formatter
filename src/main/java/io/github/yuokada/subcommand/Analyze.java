@@ -6,15 +6,18 @@ import io.github.yuokada.config.ConfigException;
 import io.github.yuokada.config.LoadedProjectConfig;
 import io.github.yuokada.core.AstView;
 import io.github.yuokada.core.ExitCodes;
+import io.github.yuokada.core.LintFinding;
 import io.github.yuokada.core.QueryAnalysisResult;
 import io.github.yuokada.core.QueryAnalyzer;
 import io.github.yuokada.core.TrinoRemoteValidator;
 import io.github.yuokada.core.UdfCatalog;
 import io.github.yuokada.core.UdfDefinition;
+import io.github.yuokada.core.util.JsonUtil;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
+import io.github.yuokada.subcommand.util.SqlFileCollector;
 import io.github.yuokada.subcommand.util.SqlInput;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,7 +62,28 @@ public class Analyze implements Callable<Integer> {
      * The file to analyze.
      */
     @Parameters(paramLabel = "<file>", defaultValue = "", description = "A query file.")
-    private String sqlFile;
+    private String sqlFile = "";
+
+    /**
+     * Directory containing SQL files to analyze recursively.
+     */
+    @CommandLine.Option(names = {"--dir"},
+        description = "Analyze every *.sql file recursively under this directory.")
+    private String dirPath;
+
+    /**
+     * Glob exclude patterns for directory mode. Repeatable.
+     */
+    @CommandLine.Option(names = {"--exclude"},
+        description = "Exclude glob pattern for --dir mode. Repeatable.")
+    private List<String> excludePatterns = new ArrayList<>();
+
+    /**
+     * Print compact summary at the end of directory runs.
+     */
+    @CommandLine.Option(names = {"--summary"},
+        description = "Print a compact summary in --dir mode.")
+    private boolean summary;
 
     /**
      * Output format. Supported: text, json.
@@ -67,7 +92,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--format"},
         defaultValue = "text",
         description = "Output format: text|json")
-    private String format;
+    private String format = "text";
 
     /**
      * When true, also prints the AST of each statement.
@@ -85,7 +110,7 @@ public class Analyze implements Callable<Integer> {
         names = {"--details"},
         defaultValue = "basic",
         description = "Detail level: basic|full")
-    private String details;
+    private String details = "basic";
 
     /**
      * If specified, writes the output to the given file instead of stdout.
@@ -183,6 +208,10 @@ public class Analyze implements Callable<Integer> {
             return validationResult;
         }
 
+        if (this.dirPath != null && !this.dirPath.isBlank()) {
+            return runDirectoryMode(view);
+        }
+
         List<String> statements = collectStatements();
         if (statements.size() > 1) {
             System.err.println(MULTIPLE_STATEMENTS_ERROR_MESSAGE);
@@ -225,7 +254,24 @@ public class Analyze implements Callable<Integer> {
     }
 
     private Integer validateOptions() {
-        if (!this.sqlFile.isEmpty()) {
+        boolean hasDir = this.dirPath != null && !this.dirPath.isBlank();
+        boolean hasFile = this.sqlFile != null && !this.sqlFile.isEmpty();
+        if (hasDir && hasFile) {
+            System.err.println("Error: provide either <file> or --dir, not both.");
+            return ExitCodes.ERROR;
+        }
+        if (hasDir) {
+            Path dir = Path.of(this.dirPath);
+            if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+                System.err.println("Error: directory not found: " + this.dirPath);
+                return ExitCodes.ERROR;
+            }
+            if (stdinHasData()) {
+                System.err.println("Error: provide either --dir or stdin, not both.");
+                return ExitCodes.ERROR;
+            }
+        }
+        if (hasFile) {
             Path sqlPath = Path.of(this.sqlFile);
             if (!Files.exists(sqlPath)) {
                 System.err.println("Error: SQL file not found: " + this.sqlFile);
@@ -258,6 +304,164 @@ public class Analyze implements Callable<Integer> {
                 "Warning: remote findings are only shown in --details full mode for text output.");
         }
         return null;
+    }
+
+    private Integer runDirectoryMode(AstView view) throws IOException {
+        Path baseDir = Path.of(this.dirPath).toAbsolutePath().normalize();
+        List<Path> files = SqlFileCollector.collect(this.dirPath, this.excludePatterns);
+        SummaryCounter counter = new SummaryCounter();
+
+        Map<String, UdfDefinition> udfCatalog = loadUdfCatalog(this.udfCatalogPath);
+        Set<String> effectiveKnown = null;
+        if (this.validateFunctions) {
+            effectiveKnown = parseKnownFunctions(this.knownFunctionsInput);
+            if (udfCatalog != null) {
+                effectiveKnown.addAll(udfCatalog.keySet());
+            }
+        }
+
+        try (OutputEmitter emitter = new OutputEmitter(outputPath)) {
+            if (isJsonFormat()) {
+                runDirectoryJson(view, baseDir, files, counter, effectiveKnown, udfCatalog, emitter);
+            } else {
+                runDirectoryText(view, baseDir, files, counter, effectiveKnown, udfCatalog, emitter);
+            }
+            if (this.summary && !isJsonFormat()) {
+                emitTextSummary(emitter, counter);
+            }
+        }
+        return counter.toExitCode();
+    }
+
+    private void runDirectoryText(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
+        throws IOException {
+        AnalysisPrinter printer =
+            new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view, this.astDepth);
+        for (Path file : files) {
+            String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+            emitter.emit("===== " + label + " =====");
+            List<String> statements = collectStatementsFromFile(file.toString());
+            if (statements.size() > 1) {
+                emitter.emit("Error: " + MULTIPLE_STATEMENTS_ERROR_MESSAGE);
+                counter.addError();
+                continue;
+            }
+            if (statements.isEmpty()) {
+                emitter.emit("No complete statements.");
+                counter.addClean();
+                continue;
+            }
+            String statement = statements.get(0);
+            QueryAnalysisResult result = QueryAnalyzer.analyze(
+                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
+            result = TrinoRemoteValidator.validate(
+                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+            printer.printStatement(result, null, statement);
+            counter.addResult(result);
+        }
+    }
+
+    private void runDirectoryJson(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
+        throws IOException {
+        List<String> items = new ArrayList<>();
+        for (Path file : files) {
+            String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+            List<String> statements = collectStatementsFromFile(file.toString());
+            if (statements.size() > 1) {
+                items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
+                    + "\"severity\":\"ERROR\","
+                    + "\"error\":\"" + JsonUtil.escape(MULTIPLE_STATEMENTS_ERROR_MESSAGE) + "\"}");
+                counter.addError();
+                continue;
+            }
+            if (statements.isEmpty()) {
+                items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
+                    + "\"severity\":\"OK\","
+                    + "\"status\":\"empty\"}");
+                counter.addClean();
+                continue;
+            }
+            String statement = statements.get(0);
+            QueryAnalysisResult result = QueryAnalyzer.analyze(
+                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
+            result = TrinoRemoteValidator.validate(
+                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+            SummarySeverity severity = SummarySeverity.from(result);
+            counter.addResult(result);
+            String resultJson = buildJsonResult(result, statement, view);
+            items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
+                + "\"severity\":\"" + severity.name() + "\","
+                + "\"result\":" + resultJson + "}");
+        }
+        if (this.summary) {
+            items.add(counter.toJsonSummaryItem());
+        }
+        emitter.emit("[" + String.join(",", items) + "]");
+    }
+
+    private String buildJsonResult(QueryAnalysisResult result, String originalSql, AstView view) {
+        String json;
+        if (isBasicDetails()) {
+            String ast = this.showAst
+                ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)))
+                : null;
+            StringBuilder sb = new StringBuilder();
+            sb.append('{');
+            if (ast != null) {
+                sb.append("\"ast\":\"").append(ast).append("\",");
+            }
+            sb.append("\"queryType\":\"")
+                .append(JsonUtil.escape(result.getQueryType()))
+                .append("\",");
+            sb.append("\"catalogs\":[");
+            boolean first = true;
+            for (String catalog : result.getCatalogs()) {
+                if (!first) {
+                    sb.append(',');
+                }
+                sb.append("\"").append(JsonUtil.escape(catalog)).append("\"");
+                first = false;
+            }
+            sb.append("]}");
+            json = sb.toString();
+        } else {
+            json = result.toJson();
+            if (this.showAst && json.startsWith("{")) {
+                String ast = JsonUtil.escape(
+                    limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
+                String body = json.substring(1);
+                json = "{\"ast\":\"" + ast + "\"," + body;
+            }
+        }
+        return json;
+    }
+
+    private String limitAst(String ast) {
+        if (ast == null) {
+            return "";
+        }
+        if (ast.length() <= this.astLimit) {
+            return ast;
+        }
+        return ast.substring(0, this.astLimit) + "\n... (truncated)";
+    }
+
+    private void emitTextSummary(OutputEmitter emitter, SummaryCounter counter) throws IOException {
+        emitter.emit("Files analyzed : " + counter.totalFiles);
+        emitter.emit("  Clean        : " + counter.cleanFiles);
+        emitter.emit("  Warnings     : " + counter.warningFiles
+            + formatRules(counter.warningRules));
+        emitter.emit("  Errors       : " + counter.errorFiles + formatRules(counter.errorRules));
+        emitter.emit("Exit code: " + counter.toExitCode());
+    }
+
+    private static String formatRules(Set<String> rules) {
+        if (rules.isEmpty()) {
+            return "";
+        }
+        return " (" + String.join(", ", rules) + ")";
     }
 
     /**
@@ -314,11 +518,17 @@ public class Analyze implements Callable<Integer> {
 
     private List<String> collectStatements() throws IOException {
         List<String> statements = new ArrayList<>();
-        if (!sqlFile.isEmpty()) {
+        if (this.sqlFile != null && !this.sqlFile.isEmpty()) {
             SqlInput.forEachStatementFromFile(sqlFile, statements::add);
             return statements;
         }
         SqlInput.forEachStatementFromStdin((idx, stmt) -> statements.add(stmt));
+        return statements;
+    }
+
+    private List<String> collectStatementsFromFile(String filePath) throws IOException {
+        List<String> statements = new ArrayList<>();
+        SqlInput.forEachStatementFromFile(filePath, statements::add);
         return statements;
     }
 
@@ -449,5 +659,109 @@ public class Analyze implements Callable<Integer> {
 
     void setServerOptions(TrinoConnectionOptions serverOptions) {
         this.serverOptions = serverOptions;
+    }
+
+    void setDirPath(String dirPath) {
+        this.dirPath = dirPath;
+    }
+
+    void setExcludePatterns(List<String> excludePatterns) {
+        this.excludePatterns = excludePatterns;
+    }
+
+    void setSummary(boolean summary) {
+        this.summary = summary;
+    }
+
+    private enum SummarySeverity {
+        OK,
+        WARNING,
+        ERROR;
+
+        static SummarySeverity from(QueryAnalysisResult result) {
+            if (result.getParseError() != null) {
+                return ERROR;
+            }
+            SummarySeverity severity = OK;
+            for (LintFinding finding : result.getFindings()) {
+                if (finding.getSeverity() == LintFinding.Severity.ERROR) {
+                    return ERROR;
+                }
+                if (finding.getSeverity() == LintFinding.Severity.WARNING) {
+                    severity = WARNING;
+                }
+            }
+            return severity;
+        }
+    }
+
+    private static final class SummaryCounter {
+        private int totalFiles;
+        private int cleanFiles;
+        private int warningFiles;
+        private int errorFiles;
+        private final Set<String> warningRules = new LinkedHashSet<>();
+        private final Set<String> errorRules = new LinkedHashSet<>();
+
+        private void addClean() {
+            this.totalFiles++;
+            this.cleanFiles++;
+        }
+
+        private void addError() {
+            this.totalFiles++;
+            this.errorFiles++;
+        }
+
+        private void addResult(QueryAnalysisResult result) {
+            this.totalFiles++;
+            SummarySeverity severity = SummarySeverity.from(result);
+            if (severity == SummarySeverity.ERROR) {
+                this.errorFiles++;
+            } else if (severity == SummarySeverity.WARNING) {
+                this.warningFiles++;
+            } else {
+                this.cleanFiles++;
+            }
+            for (LintFinding finding : result.getFindings()) {
+                if (finding.getSeverity() == LintFinding.Severity.ERROR) {
+                    this.errorRules.add(finding.getRuleId());
+                } else if (finding.getSeverity() == LintFinding.Severity.WARNING) {
+                    this.warningRules.add(finding.getRuleId());
+                }
+            }
+        }
+
+        private int toExitCode() {
+            if (this.errorFiles > 0) {
+                return ExitCodes.ERROR;
+            }
+            if (this.warningFiles > 0) {
+                return ExitCodes.WARNING;
+            }
+            return ExitCodes.OK;
+        }
+
+        private String toJsonSummaryItem() {
+            String warningJson = toJsonArray(this.warningRules);
+            String errorJson = toJsonArray(this.errorRules);
+            return "{\"summary\":{"
+                + "\"filesAnalyzed\":" + this.totalFiles + ","
+                + "\"clean\":" + this.cleanFiles + ","
+                + "\"warnings\":" + this.warningFiles + ","
+                + "\"errors\":" + this.errorFiles + ","
+                + "\"warningRules\":" + warningJson + ","
+                + "\"errorRules\":" + errorJson + ","
+                + "\"exitCode\":" + toExitCode()
+                + "}}";
+        }
+
+        private static String toJsonArray(Set<String> values) {
+            List<String> escaped = new ArrayList<>();
+            for (String value : values) {
+                escaped.add("\"" + JsonUtil.escape(value) + "\"");
+            }
+            return "[" + String.join(",", escaped) + "]";
+        }
     }
 }
