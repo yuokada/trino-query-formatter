@@ -1,5 +1,8 @@
 package io.github.yuokada;
 
+import io.github.yuokada.config.ConfigException;
+import io.github.yuokada.config.LoadedProjectConfig;
+import io.github.yuokada.config.ProjectConfigLoader;
 import io.github.yuokada.subcommand.Analyze;
 import io.github.yuokada.subcommand.Format;
 import io.github.yuokada.subcommand.GenerateCompletion;
@@ -40,11 +43,28 @@ public class EntryCommand implements Callable<Integer> {
     private boolean quiet;
 
     /**
+     * Optional config file path.
+     */
+    @CommandLine.Option(names = {"--config"},
+        description = "Path to .trino-query-formatter.yml config file.")
+    private String configPath;
+
+    /**
      * Explicit version flag so the command can customize verbose version output.
      */
     @CommandLine.Option(names = {"-V", "--version"}, versionHelp = true,
         description = "Print version information and exit.")
     private boolean versionRequested;
+
+    /**
+     * Cached loaded config.
+     */
+    private LoadedProjectConfig loadedConfig;
+
+    /**
+     * Whether config resolution already ran.
+     */
+    private boolean configResolved;
 
     /**
      * Main entry point for the command-line application.
@@ -134,5 +154,24 @@ public class EntryCommand implements Callable<Integer> {
      */
     public boolean isQuiet() {
         return this.quiet;
+    }
+
+    /**
+     * Loads config once and returns it for subcommands.
+     *
+     * @return loaded config or null when no file exists
+     * @throws ConfigException when loading fails
+     */
+    public LoadedProjectConfig getLoadedConfig() throws ConfigException {
+        if (!this.configResolved) {
+            this.loadedConfig = ProjectConfigLoader.load(this.configPath);
+            this.configResolved = true;
+            if (this.loadedConfig != null) {
+                for (String warning : this.loadedConfig.getWarnings()) {
+                    System.err.println(warning);
+                }
+            }
+        }
+        return this.loadedConfig;
     }
 }
