@@ -12,7 +12,9 @@ import io.github.yuokada.core.QueryAnalyzer;
 import io.github.yuokada.core.TrinoRemoteValidator;
 import io.github.yuokada.core.UdfCatalog;
 import io.github.yuokada.core.UdfDefinition;
-import io.github.yuokada.core.util.JsonUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
@@ -45,6 +47,10 @@ public class Analyze implements Callable<Integer> {
         "analyze supports exactly one query; found multiple statements";
     /** Exit code returned when more than one statement is supplied. */
     private static final int MULTIPLE_STATEMENTS_EXIT_CODE = 1;
+    /**
+     * Shared JSON mapper for directory-mode JSON output.
+     */
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
      * The parent command.
@@ -221,7 +227,7 @@ public class Analyze implements Callable<Integer> {
         if (statements.isEmpty()) {
             return ExitCode.OK;
         }
-        if (isJsonFormat() && isBasicDetails() && this.dirPath == null) {
+        if (isJsonFormat() && isBasicDetails()) {
             System.err.println(
                 "Warning: --details basic suppresses extended fields; use --details full for complete JSON.");
         }
@@ -249,9 +255,7 @@ public class Analyze implements Callable<Integer> {
             QueryAnalysisResult result =
                 QueryAnalyzer.analyze(statement, defaultCatalog, defaultSchema,
                     effectiveKnown, udfCatalog);
-            // Phase 2: remote validation via EXPLAIN (TYPE VALIDATE)
-            result = TrinoRemoteValidator.validate(
-                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+            result = validateRemotelyIfNeeded(result, statement);
             printer.printStatement(result, null, statement);
         }
         return ExitCode.OK;
@@ -339,103 +343,106 @@ public class Analyze implements Callable<Integer> {
         AnalysisPrinter printer =
             new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view, this.astDepth);
         for (Path file : files) {
-            String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
-            emitter.emit("===== " + label + " =====");
-            List<String> statements = collectStatementsFromFile(file.toString());
-            if (statements.size() > 1) {
-                emitter.emit("Error: " + MULTIPLE_STATEMENTS_ERROR_MESSAGE);
+            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
+                udfCatalog);
+            try {
+                emitter.emit("===== " + analysis.label() + " =====");
+                if (analysis.errorMessage() != null) {
+                    emitter.emit("Error: Failed to analyze " + analysis.label() + ": "
+                        + analysis.errorMessage());
+                    counter.addError();
+                    continue;
+                }
+                if (analysis.multipleStatements()) {
+                    emitter.emit("Error: " + MULTIPLE_STATEMENTS_ERROR_MESSAGE);
+                    counter.addError();
+                    continue;
+                }
+                if (analysis.empty()) {
+                    emitter.emit("No complete statements.");
+                    counter.addClean();
+                    continue;
+                }
+                printer.printStatement(analysis.result(), null, analysis.statement());
+                counter.addResult(analysis.result());
+            } catch (IOException | RuntimeException e) {
+                emitter.emit("Error: Failed to analyze " + analysis.label() + ": "
+                    + errorMessage(e));
                 counter.addError();
-                continue;
             }
-            if (statements.isEmpty()) {
-                emitter.emit("No complete statements.");
-                counter.addClean();
-                continue;
-            }
-            String statement = statements.get(0);
-            QueryAnalysisResult result = QueryAnalyzer.analyze(
-                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
-            result = TrinoRemoteValidator.validate(
-                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
-            printer.printStatement(result, null, statement);
-            counter.addResult(result);
         }
     }
 
     private void runDirectoryJson(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
         Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
         throws IOException {
-        List<String> items = new ArrayList<>();
+        emitter.emit("[");
+        boolean hasItem = false;
         for (Path file : files) {
-            String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
-            List<String> statements = collectStatementsFromFile(file.toString());
-            if (statements.size() > 1) {
-                items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
-                    + "\"severity\":\"ERROR\","
-                    + "\"error\":\"" + JsonUtil.escape(MULTIPLE_STATEMENTS_ERROR_MESSAGE) + "\"}");
+            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
+                udfCatalog);
+            String itemJson;
+            try {
+                itemJson = buildDirectoryJsonItem(analysis, view);
+            } catch (RuntimeException e) {
+                itemJson = buildErrorDirectoryJson(analysis.label(), errorMessage(e));
+            }
+            if (hasItem) {
+                emitter.emit("," + itemJson);
+            } else {
+                emitter.emit(itemJson);
+                hasItem = true;
+            }
+            if (analysis.errorMessage() != null || analysis.multipleStatements()) {
                 counter.addError();
-                continue;
-            }
-            if (statements.isEmpty()) {
-                items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
-                    + "\"severity\":\"OK\","
-                    + "\"status\":\"empty\"}");
+            } else if (analysis.empty()) {
                 counter.addClean();
-                continue;
+            } else {
+                counter.addResult(analysis.result());
             }
-            String statement = statements.get(0);
-            QueryAnalysisResult result = QueryAnalyzer.analyze(
-                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
-            result = TrinoRemoteValidator.validate(
-                result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
-            SummarySeverity severity = SummarySeverity.from(result);
-            counter.addResult(result);
-            String resultJson = buildJsonResult(result, statement, view);
-            items.add("{\"file\":\"" + JsonUtil.escape(label) + "\","
-                + "\"severity\":\"" + severity.name() + "\","
-                + "\"result\":" + resultJson + "}");
         }
         if (this.summary) {
-            items.add(counter.toJsonSummaryItem());
+            String summaryJson = counter.toJsonSummaryItem();
+            if (hasItem) {
+                emitter.emit("," + summaryJson);
+            } else {
+                emitter.emit(summaryJson);
+                hasItem = true;
+            }
         }
-        emitter.emit("[" + String.join(",", items) + "]");
+        emitter.emit("]");
     }
 
     private String buildJsonResult(QueryAnalysisResult result, String originalSql, AstView view) {
-        String json;
         if (isBasicDetails()) {
-            String ast = this.showAst
-                ? JsonUtil.escape(limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)))
-                : null;
-            StringBuilder sb = new StringBuilder();
-            sb.append('{');
-            if (ast != null) {
-                sb.append("\"ast\":\"").append(ast).append("\",");
+            ObjectNode node = JSON_MAPPER.createObjectNode();
+            if (this.showAst) {
+                node.put("ast", limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
             }
-            sb.append("\"queryType\":\"")
-                .append(JsonUtil.escape(result.getQueryType()))
-                .append("\",");
-            sb.append("\"catalogs\":[");
-            boolean first = true;
-            for (String catalog : result.getCatalogs()) {
-                if (!first) {
-                    sb.append(',');
-                }
-                sb.append("\"").append(JsonUtil.escape(catalog)).append("\"");
-                first = false;
+            node.put("queryType", result.getQueryType());
+            node.putArray("catalogs").addAll(
+                result.getCatalogs().stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            if (result.getParseError() != null) {
+                node.put("parseError", result.getParseError());
             }
-            sb.append("]}");
-            json = sb.toString();
-        } else {
-            json = result.toJson();
-            if (this.showAst && json.startsWith("{")) {
-                String ast = JsonUtil.escape(
-                    limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
-                String body = json.substring(1);
-                json = "{\"ast\":\"" + ast + "\"," + body;
-            }
+            return toJsonString(node);
         }
-        return json;
+        try {
+            JsonNode node = JSON_MAPPER.readTree(result.toJson());
+            if (!(node instanceof ObjectNode objectNode)) {
+                throw new IllegalStateException("analysis JSON is not an object");
+            }
+            if (this.showAst) {
+                objectNode.put("ast",
+                    limitAst(QueryAnalyzer.dumpAst(originalSql, view, this.astDepth)));
+            }
+            return toJsonString(objectNode);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to build analysis JSON", e);
+        }
     }
 
     private String limitAst(String ast) {
@@ -446,6 +453,83 @@ public class Analyze implements Callable<Integer> {
             return ast;
         }
         return ast.substring(0, this.astLimit) + "\n... (truncated)";
+    }
+
+    private DirectoryAnalysis analyzeDirectoryFile(Path baseDir, Path file,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog) {
+        String label = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+        try {
+            List<String> statements = collectStatementsFromFile(file.toString());
+            if (statements.size() > 1) {
+                return DirectoryAnalysis.multipleStatements(label);
+            }
+            if (statements.isEmpty()) {
+                return DirectoryAnalysis.empty(label);
+            }
+            String statement = statements.get(0);
+            QueryAnalysisResult result = QueryAnalyzer.analyze(
+                statement, defaultCatalog, defaultSchema, effectiveKnown, udfCatalog);
+            result = validateRemotelyIfNeeded(result, statement);
+            return DirectoryAnalysis.result(label, statement, result, SummarySeverity.from(result));
+        } catch (IOException | RuntimeException e) {
+            return DirectoryAnalysis.error(label, errorMessage(e));
+        }
+    }
+
+    private QueryAnalysisResult validateRemotelyIfNeeded(QueryAnalysisResult result, String statement) {
+        if (result.getParseError() != null) {
+            return result;
+        }
+        return TrinoRemoteValidator.validate(
+            result, statement, this.serverOptions, this.defaultCatalog, this.defaultSchema);
+    }
+
+    private String buildDirectoryJsonItem(DirectoryAnalysis analysis, AstView view) {
+        ObjectNode node = JSON_MAPPER.createObjectNode();
+        node.put("file", analysis.label());
+        if (analysis.errorMessage() != null) {
+            node.put("severity", "ERROR");
+            node.put("error", analysis.errorMessage());
+            return toJsonString(node);
+        }
+        if (analysis.empty()) {
+            node.put("severity", "OK");
+            node.put("status", "empty");
+            return toJsonString(node);
+        }
+        node.put("severity", analysis.severity().name());
+        try {
+            JsonNode resultNode = JSON_MAPPER.readTree(buildJsonResult(analysis.result(),
+                analysis.statement(), view));
+            node.set("result", resultNode);
+            return toJsonString(node);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to build directory JSON", e);
+        }
+    }
+
+    private String buildErrorDirectoryJson(String label, String message) {
+        ObjectNode node = JSON_MAPPER.createObjectNode();
+        node.put("file", label);
+        node.put("severity", "ERROR");
+        node.put("error", message);
+        return toJsonString(node);
+    }
+
+    private static String toJsonString(ObjectNode node) {
+        try {
+            return JSON_MAPPER.writeValueAsString(node);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to serialise JSON", e);
+        }
+    }
+
+    private static String errorMessage(Throwable throwable) {
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            return throwable.getClass().getSimpleName();
+        }
+        return message;
     }
 
     private void emitTextSummary(OutputEmitter emitter, SummaryCounter counter) throws IOException {
@@ -743,25 +827,54 @@ public class Analyze implements Callable<Integer> {
         }
 
         private String toJsonSummaryItem() {
-            String warningJson = toJsonArray(this.warningRules);
-            String errorJson = toJsonArray(this.errorRules);
-            return "{\"summary\":{"
-                + "\"filesAnalyzed\":" + this.totalFiles + ","
-                + "\"clean\":" + this.cleanFiles + ","
-                + "\"warnings\":" + this.warningFiles + ","
-                + "\"errors\":" + this.errorFiles + ","
-                + "\"warningRules\":" + warningJson + ","
-                + "\"errorRules\":" + errorJson + ","
-                + "\"exitCode\":" + toExitCode()
-                + "}}";
+            ObjectNode root = JSON_MAPPER.createObjectNode();
+            ObjectNode summary = root.putObject("summary");
+            summary.put("filesAnalyzed", this.totalFiles);
+            summary.put("clean", this.cleanFiles);
+            summary.put("warnings", this.warningFiles);
+            summary.put("errors", this.errorFiles);
+            summary.putArray("warningRules").addAll(
+                this.warningRules.stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            summary.putArray("errorRules").addAll(
+                this.errorRules.stream()
+                    .sorted()
+                    .map(JSON_MAPPER.getNodeFactory()::textNode)
+                    .toList());
+            summary.put("exitCode", toExitCode());
+            return toJsonString(root);
+        }
+    }
+
+    private record DirectoryAnalysis(
+        String label,
+        String statement,
+        QueryAnalysisResult result,
+        SummarySeverity severity,
+        String errorMessage,
+        boolean empty,
+        boolean multipleStatements) {
+
+        static DirectoryAnalysis result(String label, String statement, QueryAnalysisResult result,
+            SummarySeverity severity) {
+            return new DirectoryAnalysis(label, statement, result, severity, null, false, false);
         }
 
-        private static String toJsonArray(Set<String> values) {
-            List<String> escaped = new ArrayList<>();
-            for (String value : values) {
-                escaped.add("\"" + JsonUtil.escape(value) + "\"");
-            }
-            return "[" + String.join(",", escaped) + "]";
+        static DirectoryAnalysis empty(String label) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.OK, null, true, false);
         }
+
+        static DirectoryAnalysis multipleStatements(String label) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.ERROR,
+                MULTIPLE_STATEMENTS_ERROR_MESSAGE, false, true);
+        }
+
+        static DirectoryAnalysis error(String label, String errorMessage) {
+            return new DirectoryAnalysis(label, null, null, SummarySeverity.ERROR, errorMessage,
+                false, false);
+        }
+
     }
 }

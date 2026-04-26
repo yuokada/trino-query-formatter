@@ -80,4 +80,20 @@ class AnalyzeDirectoryModeTest {
         assertTrue(out.contains("\"warn.sql\""));
         assertFalse(out.contains("skip/error.sql"));
     }
+
+    @Test
+    void directoryJsonIncludesParseError(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("invalid.sql"), "SELEC * FROM foo;");
+
+        Analyze analyze = new Analyze();
+        analyze.setDirPath(tempDir.toString());
+        analyze.setFormat("json");
+
+        int exit = analyze.call();
+
+        String out = outContent.toString(StandardCharsets.UTF_8);
+        assertEquals(2, exit);
+        assertTrue(out.contains("\"parseError\""));
+        assertTrue(out.contains("\"invalid.sql\""));
+    }
 }
