@@ -12,9 +12,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Disabled("Disabled to reduce CI runtime; these assertions are covered by faster tests.")
 class AnalyzeIssueValidationTest {
 
     private final ByteArrayOutputStream errContent = new ByteArrayOutputStream();

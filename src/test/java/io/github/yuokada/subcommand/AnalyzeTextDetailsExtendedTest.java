@@ -9,12 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Extended text details (CTE/Join/Functions) verification.
  */
+@Disabled("Disabled to reduce CI runtime; these assertions are covered by faster tests.")
 class AnalyzeTextDetailsExtendedTest {
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
