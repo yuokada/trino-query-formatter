@@ -37,10 +37,6 @@ jobs:
       with:
         name: surefire-report
         path: target/reports/
-    - name: Show dependencies
-      run: |
-        ./mvnw -B dependency:list
-        ./mvnw -B dependency:tree
     # Optional: Uploads the full dependency graph to GitHub to improve the quality of Dependabot alerts this repository can receive
     - name: Update dependency graph
       continue-on-error: true
