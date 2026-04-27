@@ -30,6 +30,13 @@ jobs:
         cache: maven
     - name: Build with Maven
       run: mvn -B package --file pom.xml
+    - name: Generate test report
+      run: mvn -B surefire-report:report-only
+    - name: Upload test report
+      uses: actions/upload-artifact@v4
+      with:
+        name: surefire-report
+        path: target/reports/
     - name: Show dependencies
       run: |
         ./mvnw -B dependency:list
