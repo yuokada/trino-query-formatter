@@ -6,20 +6,20 @@ Quarkus, Picocli, and the `trino-parser`/`trino-cli` libraries.
 ## Quick start
 
 ```bash
-# Build (produces an über-jar by default)
+# Build (produces an uber-jar by default)
 ./mvnw package
 
 # Format a file
-java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar format query.sql
+java -jar target/trino-query-formatter-1.0.0-SNAPSHOT.jar format query.sql
 
 # Show extended build/runtime metadata
-java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar --version --verbose
+java -jar target/trino-query-formatter-1.0.0-SNAPSHOT.jar --version --verbose
 
 # Read from stdin, write to stdout
-cat query.sql | java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar format -
+cat query.sql | java -jar target/trino-query-formatter-1.0.0-SNAPSHOT.jar format -
 
 # Analyze a file
-java -jar target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar analyze query.sql
+java -jar target/trino-query-formatter-1.0.0-SNAPSHOT.jar analyze query.sql
 ```
 
 ---
@@ -523,6 +523,6 @@ not available.
 The first run pulls the `trinodb/trino:435` image (~700 MB). Subsequent runs reuse the cached
 image. The container is started once per test class and stopped when the class finishes.
 
-The über-jar is produced at `target/trino-query-formatter-1.0.0-SNAPSHOT-runner.jar`.
+The uber-jar is produced at `target/trino-query-formatter-<version>.jar`.
 
 For more information on Quarkus, see <https://quarkus.io/>.

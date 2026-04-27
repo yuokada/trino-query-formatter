@@ -45,7 +45,7 @@
 ## ブランチ戦略
 - 基本方針:
   - 方式: Trunk-based（GitHub Flow）+ 必要時のみ短命リリースブランチ
-  - 目的: 常にリリース可能な `main` を維持し、小さく速く統合
+  - 目的: 常にリリース可能な `master` を維持し、小さく速く統合
 - ブランチ命名:
   - 機能: `feature/<short-desc>`（例: `feature/formatter-cli-help`）
   - 修正: `fix/<issue-id>-<short-desc>`
@@ -59,13 +59,13 @@
   - PR本文: 目的/影響、関連 Issue、CLI 実行例と出力（ユーザー影響時）
 - リリース:
   - バージョニング: SemVer（`pom.xml` を更新）
-  - 通常: `main` からタグ `vX.Y.Z`（安定化不要ならブランチ不要）
-  - 安定化あり: `release/x.y` → 微修正 → `vX.Y.Z` タグ → `main` に反映
+  - 通常: `master` からタグ `vX.Y.Z`（安定化不要ならブランチ不要）
+  - 安定化あり: `release/x.y` → 微修正 → `vX.Y.Z` タグ → `master` に反映
   - 次開発版: `X.Y+1.0-SNAPSHOT` に更新
   - 配布: GitHub Actions（repo スコープトークン）
 - ホットフィックス:
-  - 重大不具合: `hotfix/<x.y.z>-...` を `main`（または開いている `release/x.y`）から
-  - 反映: 修正後 `vX.Y.Z+1` タグ、`main` と該当 `release/x.y` に適用（必要に応じて cherry-pick）
+  - 重大不具合: `hotfix/<x.y.z>-...` を `master`（または開いている `release/x.y`）から
+  - 反映: 修正後 `vX.Y.Z+1` タグ、`master` と該当 `release/x.y` に適用（必要に応じて cherry-pick）
 - 便利コマンド:
   - 新規ブランチ: `git checkout -b feature/formatter-cli-help`
   - リリースブランチ: `git checkout -b release/1.3`
@@ -73,7 +73,7 @@
   - タグ付け: `git tag -a v1.3.0 -m "Release 1.3.0" && git push --tags`
 
 ## ブランチ保護設定
-- 対象ブランチ: `main`, `release/*`
+- 対象ブランチ: `master`, `release/*`
 - 必須要件:
   - PR 経由のみ（直 push 禁止）、レビュー 1 件以上
   - ステータスチェック必須: `validate`（`./mvnw validate`）と `test`（`./mvnw test`）

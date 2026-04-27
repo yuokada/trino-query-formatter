@@ -29,9 +29,9 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -B package --file pom.xml
+      run: ./mvnw -B package --file pom.xml
     - name: Generate test report
-      run: mvn -B surefire-report:report-only
+      run: ./mvnw -B surefire-report:report-only
     - name: Upload test report
       uses: actions/upload-artifact@v4
       with:
@@ -59,9 +59,9 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Run container-backed integration tests
-      run: mvn -B test -Pcontainer-tests --file pom.xml
+      run: ./mvnw -B test -Pcontainer-tests --file pom.xml
     - name: Generate container test report
-      run: mvn -B surefire-report:report-only
+      run: ./mvnw -B surefire-report:report-only
     - name: Upload container test report
       uses: actions/upload-artifact@v4
       with:
