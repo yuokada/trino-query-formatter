@@ -7,10 +7,10 @@
 ## CLI/UX 改善 (P0-P1)
 - ✅ 標準入出力対応 (P0/S): `format -` で stdin、`-o` で出力先指定
 - ✅ チェックモード (P0/S): `--check` で差分検出のみ（差分時は終了コード≠0）
-- 差分表示 (P1/M): `--diff` で色付き unified diff
+- ✅ 差分表示 (P1/M): `--diff` で色付き unified diff
 - ✅ キーワード大小写 (P1/S): `--keyword-case [upper|lower|keep]`
 - ✅ 行幅/インデント (P1/S): `--max-line-length`, `--indent-size`
-- 補完スクリプト (P1/S): `--generate-completion`（bash/zsh/fish）
+- ✅ 補完スクリプト (P1/S): `--generate-completion`（bash/zsh/fish）
 
 ## フォーマッタ/アナライザ機能 (P0-P1)
 - ✅ コメント保持 (P0/M): インライン/ブロックコメントの位置保持

@@ -1,12 +1,18 @@
 package io.github.yuokada.subcommand;
 
 import io.github.yuokada.EntryCommand;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import picocli.AutoComplete;
 import picocli.CommandLine;
-import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.ArgSpec;
 import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Model.OptionSpec;
+import picocli.CommandLine.Spec;
 
 /**
  * Generates shell completion scripts for the CLI.
@@ -50,45 +56,147 @@ public class GenerateCompletion implements Callable<Integer> {
     }
 
     private int printFishScript() {
-        String rootName = spec.root().name();
-        String script = """
-            complete -c %s -f
-            complete -c %s -n '__fish_use_subcommand' -a format -d 'Format SQL query'
-            complete -c %s -n '__fish_use_subcommand' -a analyze -d 'Analyze SQL query'
-            complete -c %s -n '__fish_use_subcommand' -a generate-completion -d 'Generate shell completion scripts'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l output -s o -r -d 'Write output to this file instead of stdout'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l check -d 'Check if input is already formatted'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l diff -d 'Show unified diff of formatting changes'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l keyword-case -r -a 'upper lower keep' -d 'SQL keyword case'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l indent-size -r -d 'Spaces per indentation level'
-            complete -c %s -n '__fish_seen_subcommand_from format' -l max-line-length -r -d 'Warn when formatted lines exceed this length'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l format -r -a 'text json' -d 'Output format'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l details -r -a 'basic full' -d 'Detail level'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l output -r -d 'Write output to the specified file path'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l show-ast -d 'Show AST for each statement'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l ast-view -r -a 'tree outline raw' -d 'AST display mode'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l ast-depth -r -d 'Maximum AST depth to display'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l ast-limit -r -d 'Maximum characters for embedded AST in JSON output'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l catalog -r -d 'Default catalog'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l schema -r -d 'Default schema'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l validate-functions -d 'Flag unknown functions as W002'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l known-functions -r -d 'Extra known function names'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l udf-catalog -r -d 'YAML file with UDF definitions'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server -r -d 'Trino server for remote validation'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server-user -r -d 'User name for the Trino session'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server-password -r -d 'Password for Basic auth'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server-access-token -r -d 'Bearer token for OAuth2 or JWT'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server-ssl -d 'Enable TLS for the Trino connection'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l server-ssl-trust-all -d 'Disable TLS certificate verification'
-            complete -c %s -n '__fish_seen_subcommand_from analyze' -l explain-timeout -r -d 'Timeout in seconds for remote validation'
-            complete -c %s -n '__fish_seen_subcommand_from generate-completion' -l shell -r -a 'bash zsh fish' -d 'Shell type'
-            """.formatted(
-            rootName, rootName, rootName, rootName, rootName, rootName, rootName, rootName,
-            rootName, rootName, rootName, rootName, rootName, rootName, rootName, rootName,
-            rootName, rootName, rootName, rootName, rootName, rootName, rootName, rootName,
-            rootName, rootName, rootName, rootName, rootName, rootName, rootName, rootName);
+        CommandLine root = EntryCommand.newCommandLine();
+        CommandSpec rootSpec = root.getCommandSpec();
+        String rootName = rootSpec.name();
+        StringBuilder script = new StringBuilder();
+
+        script.append("complete -c ").append(rootName).append(" -f\n");
+        appendFishCommand(script, rootSpec, rootName, null);
+
         spec.commandLine().getOut().print(script);
         spec.commandLine().getOut().flush();
         return 0;
+    }
+
+    private void appendFishCommand(
+        StringBuilder script, CommandSpec command, String rootName, String path) {
+        String condition = path == null
+            ? "__fish_use_subcommand"
+            : "__fish_seen_subcommand_from " + path;
+        appendFishOptions(script, command.options(), rootName, condition);
+        for (Map.Entry<String, CommandLine> entry : directSubcommands(command).entrySet()) {
+            String name = entry.getKey();
+            CommandSpec subcommand = entry.getValue().getCommandSpec();
+            appendFishSubcommand(
+                script, rootName, condition, name, firstDescriptionLine(subcommand));
+            String nextPath = path == null ? name : path + " " + name;
+            appendFishCommand(script, subcommand, rootName, nextPath);
+        }
+    }
+
+    private static Map<String, CommandLine> directSubcommands(CommandSpec command) {
+        Map<String, CommandLine> unique = new LinkedHashMap<>();
+        for (Map.Entry<String, CommandLine> entry : command.subcommands().entrySet()) {
+            CommandSpec sub = entry.getValue().getCommandSpec();
+            unique.putIfAbsent(sub.name(), entry.getValue());
+        }
+        return unique;
+    }
+
+    private static void appendFishSubcommand(
+        StringBuilder script, String rootName, String condition, String name, String description) {
+        script.append("complete -c ").append(rootName)
+            .append(" -n ").append(fishQuote(condition))
+            .append(" -a ").append(fishQuote(name));
+        if (!description.isBlank()) {
+            script.append(" -d ").append(fishQuote(description));
+        }
+        script.append('\n');
+    }
+
+    private static void appendFishOptions(
+        StringBuilder script, List<OptionSpec> options, String rootName, String condition) {
+        for (OptionSpec option : options) {
+            if (option.hidden()) {
+                continue;
+            }
+            String longName = firstLongName(option);
+            String shortName = firstShortName(option);
+            if (longName == null && shortName == null) {
+                continue;
+            }
+
+            script.append("complete -c ").append(rootName)
+                .append(" -n ").append(fishQuote(condition));
+            if (longName != null) {
+                script.append(" -l ").append(longName.substring(2));
+            }
+            if (shortName != null) {
+                script.append(" -s ").append(shortName.substring(1));
+            }
+            if (option.arity().max() > 0) {
+                script.append(" -r");
+            }
+            List<String> candidates = optionCandidates(option);
+            if (!candidates.isEmpty()) {
+                script.append(" -a ").append(fishQuote(String.join(" ", candidates)));
+            }
+            String description = firstDescriptionLine(option);
+            if (!description.isBlank()) {
+                script.append(" -d ").append(fishQuote(description));
+            }
+            script.append('\n');
+        }
+    }
+
+    private static String firstLongName(OptionSpec option) {
+        for (String name : option.names()) {
+            if (name.startsWith("--")) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    private static String firstShortName(OptionSpec option) {
+        for (String name : option.names()) {
+            if (name.startsWith("-") && !name.startsWith("--") && name.length() == 2) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> optionCandidates(OptionSpec option) {
+        List<String> values = new ArrayList<>();
+        Iterable<String> completionCandidates = option.completionCandidates();
+        if (completionCandidates != null) {
+            for (String candidate : completionCandidates) {
+                if (candidate != null && !candidate.isBlank()) {
+                    values.add(candidate.trim());
+                }
+            }
+        }
+        if (!values.isEmpty()) {
+            return values;
+        }
+        Class<?> type = option.typeInfo().getType();
+        if (type != null && type.isEnum()) {
+            for (Object constant : type.getEnumConstants()) {
+                values.add(constant.toString().toLowerCase(Locale.ROOT));
+            }
+        }
+        return values;
+    }
+
+    private static String firstDescriptionLine(ArgSpec spec) {
+        String[] descriptions = spec.description();
+        if (descriptions == null || descriptions.length == 0) {
+            return "";
+        }
+        return descriptions[0].trim();
+    }
+
+    private static String firstDescriptionLine(CommandSpec spec) {
+        String[] descriptions = spec.usageMessage().description();
+        if (descriptions == null || descriptions.length == 0) {
+            return "";
+        }
+        return descriptions[0].trim();
+    }
+
+    private static String fishQuote(String value) {
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'";
     }
 }
