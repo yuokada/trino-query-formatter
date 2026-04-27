@@ -4,8 +4,10 @@ import io.github.yuokada.config.ConfigException;
 import io.github.yuokada.config.LoadedProjectConfig;
 import io.github.yuokada.config.ProjectConfigLoader;
 import io.github.yuokada.subcommand.Analyze;
+import io.github.yuokada.subcommand.Benchmark;
 import io.github.yuokada.subcommand.Format;
 import io.github.yuokada.subcommand.GenerateCompletion;
+import io.github.yuokada.subcommand.JsonRpc;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -21,7 +23,9 @@ import picocli.CommandLine.ParseResult;
     subcommands = {
         Analyze.class,
         Format.class,
-        GenerateCompletion.class
+        GenerateCompletion.class,
+        Benchmark.class,
+        JsonRpc.class
     },
     mixinStandardHelpOptions = true,
     versionProvider = GitVersionProvider.class,

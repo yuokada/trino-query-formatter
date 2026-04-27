@@ -288,6 +288,36 @@ trino-query-formatter generate-completion --shell fish > ~/.config/fish/completi
 
 Example loader scripts are committed under [`completions/`](completions/).
 
+## Benchmark
+
+Measure formatter/analyzer performance for generated large SQL:
+
+```bash
+trino-query-formatter benchmark --segments 500 --warmup 3 --iterations 10 --mode both
+```
+
+Output includes average/min/p95/max time and memory delta.
+
+## JSON-RPC endpoint
+
+The CLI provides a minimal JSON-RPC 2.0 endpoint for editor integration:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"format","params":{"sql":"select * from foo;"}}' \
+  | trino-query-formatter json-rpc
+```
+
+Supported methods:
+
+- `format` params: `sql` (required), `keywordCase` (`upper|lower|keep`), `indentSize` (>=1)
+- `analyze` params: `sql` (required)
+
+## Formatting rules
+
+CASE/JOIN/サブクエリの整形規則は以下を参照してください。
+
+- [`docs/formatting-rules-ja.md`](docs/formatting-rules-ja.md)
+
 ## Project config
 
 Shared defaults can be stored in `.trino-query-formatter.yml`.
