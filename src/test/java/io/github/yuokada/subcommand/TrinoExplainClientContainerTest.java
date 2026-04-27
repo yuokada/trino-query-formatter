@@ -9,6 +9,7 @@ import io.github.yuokada.core.LintFinding;
 import io.github.yuokada.core.RemoteValidationResult;
 import io.github.yuokada.core.TrinoExplainClient;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.TrinoContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -25,6 +26,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>Requires Docker to be available. All tests are skipped automatically when Docker
  * is not reachable.
  */
+@Tag("container")
 @Testcontainers(disabledWithoutDocker = true)
 class TrinoExplainClientContainerTest {
 

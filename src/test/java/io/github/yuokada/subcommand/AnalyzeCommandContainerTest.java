@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.containers.TrinoContainer;
@@ -35,6 +36,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>Requires Docker to be available. All tests are skipped automatically when Docker
  * is not reachable.
  */
+@Tag("container")
 @Testcontainers(disabledWithoutDocker = true)
 class AnalyzeCommandContainerTest {
 

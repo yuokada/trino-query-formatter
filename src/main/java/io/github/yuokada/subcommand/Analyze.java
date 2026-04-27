@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
 import picocli.CommandLine.Parameters;
@@ -644,12 +645,29 @@ public class Analyze implements Callable<Integer> {
     }
 
     private static boolean stdinHasData() {
-        try {
-            InputStream in = System.in;
-            return in != null && in.available() > 0;
-        } catch (IOException ignored) {
+        InputStream in = System.in;
+        if (in == null) {
             return false;
         }
+        // available() can block in some environments (e.g. Maven Surefire where System.in
+        // is socket-backed). Run the check in a daemon thread with a short timeout to
+        // keep this non-blocking in all contexts.
+        AtomicBoolean hasData = new AtomicBoolean(false);
+        Thread checker = new Thread(() -> {
+            try {
+                hasData.set(in.available() > 0);
+            } catch (IOException ignored) {
+                // leave as false
+            }
+        }, "stdin-checker");
+        checker.setDaemon(true);
+        checker.start();
+        try {
+            checker.join(50L);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return hasData.get();
     }
 
     private void applyConfigDefaults() throws ConfigException {
