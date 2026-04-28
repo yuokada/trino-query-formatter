@@ -6,10 +6,12 @@
     <property name="charset" value="UTF-8"/>
     <property name="severity" value="warning"/>
     <property name="fileExtensions" value="java, properties, xml"/>
+
     <module name="com.puppycrawl.tools.checkstyle.checks.sizes.LineLengthCheck">
         <property name="max" value="120"/>
         <property name="ignorePattern" value="^package.*|^import.*|a href=.*|href=.*|http://.*|https://.*|ftp://.*"/>
     </module>
+
     <module name="com.puppycrawl.tools.checkstyle.TreeWalker">
         <module name="com.puppycrawl.tools.checkstyle.checks.javadoc.InvalidJavadocPositionCheck"/>
         <module name="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocMethodCheck"/>
@@ -56,5 +58,18 @@
         </module>
         <module name="com.puppycrawl.tools.checkstyle.checks.coding.MultipleVariableDeclarationsCheck"/>
         <module name="com.puppycrawl.tools.checkstyle.checks.coding.RequireThisCheck"/>
+
+        <module name="CyclomaticComplexity">
+            <property name="max" value="20"/>
+        </module>
+        <module name="MethodLength">
+            <property name="max" value="80"/>
+            <property name="countEmpty" value="false"/>
+        </module>
+        <module name="ParameterNumber">
+            <property name="max" value="7"/>
+            <property name="ignoreOverriddenMethods" value="true"/>
+        </module>
+        <module name="FallThrough"/>
     </module>
 </module>
