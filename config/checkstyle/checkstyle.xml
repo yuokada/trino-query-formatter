@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+
+  <module name="TreeWalker">
+    <module name="CyclomaticComplexity">
+      <property name="max" value="20"/>
+    </module>
+
+    <module name="MethodLength">
+      <property name="max" value="80"/>
+      <property name="countEmpty" value="false"/>
+    </module>
+
+    <module name="ParameterNumber">
+      <property name="max" value="7"/>
+      <property name="ignoreOverriddenMethods" value="true"/>
+    </module>
+
+    <module name="NeedBraces"/>
+    <module name="EmptyBlock"/>
+    <module name="AvoidNestedBlocks"/>
+    <module name="FallThrough"/>
+    <module name="MissingSwitchDefault"/>
+  </module>
+</module>
