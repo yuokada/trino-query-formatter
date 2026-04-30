@@ -22,7 +22,7 @@ jobs:
         ./mvnw -B dependency:list > target/reports/dependency-list.txt
         ./mvnw -B dependency:tree > target/reports/dependency-tree.txt
     - name: Upload dependency reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: dependency-reports
         path: target/reports/dependency-*.txt
