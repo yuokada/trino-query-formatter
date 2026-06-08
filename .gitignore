@@ -51,3 +51,7 @@ nb-configuration.xml
 # Accidental Node artifacts (not used)
 package.json
 package-lock.json
+
+# Python (for .github/scripts/)
+__pycache__/
+*.py[cod]
