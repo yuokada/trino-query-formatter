@@ -290,13 +290,51 @@ Example loader scripts are committed under [`completions/`](completions/).
 
 ## Benchmark
 
-Measure formatter/analyzer performance for generated large SQL:
+For a quick local measurement, use the built-in CLI benchmark:
 
 ```bash
 trino-query-formatter benchmark --segments 500 --warmup 3 --iterations 10 --mode both
 ```
 
 Output includes average/min/p95/max time and memory delta.
+
+For reproducible parser/formatter/analyzer micro-benchmarks, build and run the JMH
+benchmark jar:
+
+```bash
+# Install the main project first so benchmarks can use the core library jar.
+./mvnw install -DskipTests
+
+# Build and run JMH benchmarks.
+./mvnw -f benchmarks/pom.xml package
+java -jar benchmarks/target/benchmarks.jar
+```
+
+Useful short smoke run:
+
+```bash
+java -jar benchmarks/target/benchmarks.jar -wi 1 -i 1 -f 1
+```
+
+### Startup time comparison
+
+Compare JVM jar startup and native executable startup on the same machine:
+
+```bash
+# JVM jar
+time java -jar target/quarkus-app/quarkus-run.jar --version
+
+# Native executable, after ./mvnw package -Dnative
+time ./target/trino-query-formatter-1.0.0-SNAPSHOT-runner --version
+```
+
+If `hyperfine` is available:
+
+```bash
+hyperfine \
+  'java -jar target/quarkus-app/quarkus-run.jar --version' \
+  './target/trino-query-formatter-1.0.0-SNAPSHOT-runner --version'
+```
 
 ## JSON-RPC endpoint
 

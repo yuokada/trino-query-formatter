@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -193,6 +195,11 @@ public class Analyze implements Callable<Integer> {
     @CommandLine.ArgGroup(heading = "%nRemote Validation Options:%n", validate = false)
     private TrinoConnectionOptions serverOptions = new TrinoConnectionOptions();
 
+    /**
+     * Optional directory parallelism override for tests.
+     */
+    private Integer directoryParallelismOverride;
+
     @Override
     public Integer call() throws IOException {
         try {
@@ -343,9 +350,9 @@ public class Analyze implements Callable<Integer> {
         throws IOException {
         AnalysisPrinter printer =
             new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view, this.astDepth);
-        for (Path file : files) {
-            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
-                udfCatalog);
+        List<DirectoryAnalysis> analyses = analyzeDirectoryFiles(baseDir, files, effectiveKnown,
+            udfCatalog);
+        for (DirectoryAnalysis analysis : analyses) {
             try {
                 emitter.emit("===== " + analysis.label() + " =====");
                 if (analysis.errorMessage() != null) {
@@ -379,9 +386,9 @@ public class Analyze implements Callable<Integer> {
         throws IOException {
         emitter.emit("[");
         boolean hasItem = false;
-        for (Path file : files) {
-            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
-                udfCatalog);
+        List<DirectoryAnalysis> analyses = analyzeDirectoryFiles(baseDir, files, effectiveKnown,
+            udfCatalog);
+        for (DirectoryAnalysis analysis : analyses) {
             String itemJson;
             try {
                 itemJson = buildDirectoryJsonItem(analysis, view);
@@ -443,6 +450,30 @@ public class Analyze implements Callable<Integer> {
             return toJsonString(objectNode);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to build analysis JSON", e);
+        }
+    }
+
+    private List<DirectoryAnalysis> analyzeDirectoryFiles(Path baseDir, List<Path> files,
+        Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog) throws IOException {
+        int parallelism = directoryParallelism(files.size());
+        if (parallelism <= 1) {
+            return files.stream()
+                .map(file -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog))
+                .toList();
+        }
+
+        ForkJoinPool pool = new ForkJoinPool(parallelism);
+        try {
+            return pool.submit(() -> files.parallelStream()
+                .map(file -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog))
+                .toList()).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Parallel directory analysis interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IOException("Parallel directory analysis failed", e.getCause());
+        } finally {
+            pool.shutdown();
         }
     }
 
@@ -644,6 +675,16 @@ public class Analyze implements Callable<Integer> {
         return "full".equalsIgnoreCase(details);
     }
 
+    private int directoryParallelism(int fileCount) {
+        if (fileCount <= 1) {
+            return fileCount;
+        }
+        int processors = this.directoryParallelismOverride == null
+            ? Runtime.getRuntime().availableProcessors()
+            : this.directoryParallelismOverride;
+        return Math.min(fileCount, Math.max(1, processors));
+    }
+
     private static boolean stdinHasData() {
         InputStream in = System.in;
         if (in == null) {
@@ -761,6 +802,10 @@ public class Analyze implements Callable<Integer> {
 
     void setServerOptions(TrinoConnectionOptions serverOptions) {
         this.serverOptions = serverOptions;
+    }
+
+    void setDirectoryParallelismOverride(int directoryParallelismOverride) {
+        this.directoryParallelismOverride = directoryParallelismOverride;
     }
 
     void setDirPath(String dirPath) {
