@@ -1,5 +1,5 @@
 ---
-name: scc complexity report
+name: scc reports
 
 on:
   pull_request:
@@ -8,16 +8,21 @@ on:
     - '**/*.java'
     - '.github/workflows/scc.yml'
     - '.github/scripts/scc_diff.py'
+    - '.github/scripts/scc_full_report.py'
+  pull_request_target:
+    branches: [ "master" ]
+    types: [closed]
 
 concurrency:
-  group: scc-${{ github.event.pull_request.number }}
+  group: scc-${{ github.event_name }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  report:
+  diff-report:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
       SCC_VERSION: 3.7.0
@@ -49,4 +54,54 @@ jobs:
             echo
             echo "_scc install unavailable: see workflow logs._"
           } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+  post-merge-report:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      SCC_VERSION: 3.7.0
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+    - name: Install scc
+      run: |
+        curl --retry 3 --retry-all-errors -fsSL \
+          "https://github.com/boyter/scc/releases/download/v${SCC_VERSION}/scc_Linux_x86_64.tar.gz" \
+          | sudo tar xz -C /usr/local/bin scc
+        scc --version
+
+    - name: Render repository-wide Java report
+      run: |
+        scc --format json -i java . > "$RUNNER_TEMP/scc.json"
+        python3 .github/scripts/scc_full_report.py \
+          "$RUNNER_TEMP/scc.json" "$MERGE_SHA" > "$RUNNER_TEMP/scc-report.md"
+        cat "$RUNNER_TEMP/scc-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Create or update PR comment
+      run: |
+        comment_id="$(
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+            --jq '[.[][] | select((.body // "") | contains("<!-- scc-full-report -->"))][0].id // empty'
+        )"
+
+        if [ -n "$comment_id" ]; then
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+            --field body=@"$RUNNER_TEMP/scc-report.md"
+        else
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --field body=@"$RUNNER_TEMP/scc-report.md"
         fi
