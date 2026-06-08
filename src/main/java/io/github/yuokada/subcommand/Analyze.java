@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -33,6 +34,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
@@ -193,6 +197,11 @@ public class Analyze implements Callable<Integer> {
     @CommandLine.ArgGroup(heading = "%nRemote Validation Options:%n", validate = false)
     private TrinoConnectionOptions serverOptions = new TrinoConnectionOptions();
 
+    /**
+     * Optional directory parallelism override for tests.
+     */
+    private Integer directoryParallelismOverride;
+
     @Override
     public Integer call() throws IOException {
         try {
@@ -343,26 +352,24 @@ public class Analyze implements Callable<Integer> {
         throws IOException {
         AnalysisPrinter printer =
             new TextAnalysisPrinter(emitter, isFullDetails(), showAst, view, this.astDepth);
-        for (Path file : files) {
-            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
-                udfCatalog);
+        processDirectoryFiles(baseDir, files, effectiveKnown, udfCatalog, analysis -> {
             try {
                 emitter.emit("===== " + analysis.label() + " =====");
                 if (analysis.errorMessage() != null) {
                     emitter.emit("Error: Failed to analyze " + analysis.label() + ": "
                         + analysis.errorMessage());
                     counter.addError();
-                    continue;
+                    return;
                 }
                 if (analysis.multipleStatements()) {
                     emitter.emit("Error: " + MULTIPLE_STATEMENTS_ERROR_MESSAGE);
                     counter.addError();
-                    continue;
+                    return;
                 }
                 if (analysis.empty()) {
                     emitter.emit("No complete statements.");
                     counter.addClean();
-                    continue;
+                    return;
                 }
                 printer.printStatement(analysis.result(), null, analysis.statement());
                 counter.addResult(analysis.result());
@@ -371,47 +378,45 @@ public class Analyze implements Callable<Integer> {
                     + errorMessage(e));
                 counter.addError();
             }
-        }
+        });
     }
 
     private void runDirectoryJson(AstView view, Path baseDir, List<Path> files, SummaryCounter counter,
         Set<String> effectiveKnown, Map<String, UdfDefinition> udfCatalog, OutputEmitter emitter)
         throws IOException {
         emitter.emit("[");
-        boolean hasItem = false;
-        for (Path file : files) {
-            DirectoryAnalysis analysis = analyzeDirectoryFile(baseDir, file, effectiveKnown,
-                udfCatalog);
-            String itemJson;
-            try {
-                itemJson = buildDirectoryJsonItem(analysis, view);
-            } catch (RuntimeException e) {
-                itemJson = buildErrorDirectoryJson(analysis.label(), errorMessage(e));
-            }
-            if (hasItem) {
-                emitter.emit("," + itemJson);
-            } else {
-                emitter.emit(itemJson);
-                hasItem = true;
-            }
-            if (analysis.errorMessage() != null || analysis.multipleStatements()) {
-                counter.addError();
-            } else if (analysis.empty()) {
-                counter.addClean();
-            } else {
-                counter.addResult(analysis.result());
-            }
+        boolean[] hasItem = {false};
+        try {
+            processDirectoryFiles(baseDir, files, effectiveKnown, udfCatalog, analysis -> {
+                String itemJson;
+                try {
+                    itemJson = buildDirectoryJsonItem(analysis, view);
+                } catch (RuntimeException e) {
+                    itemJson = buildErrorDirectoryJson(analysis.label(), errorMessage(e));
+                }
+                emitJsonItem(emitter, itemJson, hasItem);
+                if (analysis.errorMessage() != null || analysis.multipleStatements()) {
+                    counter.addError();
+                } else if (analysis.empty()) {
+                    counter.addClean();
+                } else {
+                    counter.addResult(analysis.result());
+                }
+            });
+        } catch (IOException e) {
+            emitJsonItem(emitter, buildErrorDirectoryJson(this.dirPath, errorMessage(e)), hasItem);
+            counter.addError();
         }
         if (this.summary) {
-            String summaryJson = counter.toJsonSummaryItem();
-            if (hasItem) {
-                emitter.emit("," + summaryJson);
-            } else {
-                emitter.emit(summaryJson);
-                hasItem = true;
-            }
+            emitJsonItem(emitter, counter.toJsonSummaryItem(), hasItem);
         }
         emitter.emit("]");
+    }
+
+    private static void emitJsonItem(OutputEmitter emitter, String itemJson, boolean[] hasItem)
+        throws IOException {
+        emitter.emit(hasItem[0] ? "," + itemJson : itemJson);
+        hasItem[0] = true;
     }
 
     private String buildJsonResult(QueryAnalysisResult result, String originalSql, AstView view) {
@@ -443,6 +448,44 @@ public class Analyze implements Callable<Integer> {
             return toJsonString(objectNode);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to build analysis JSON", e);
+        }
+    }
+
+    private void processDirectoryFiles(Path baseDir, List<Path> files, Set<String> effectiveKnown,
+        Map<String, UdfDefinition> udfCatalog, DirectoryAnalysisConsumer consumer)
+        throws IOException {
+        int parallelism = directoryParallelism(files.size());
+        if (parallelism <= 1) {
+            for (Path file : files) {
+                consumer.accept(analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog));
+            }
+            return;
+        }
+
+        ForkJoinPool pool = new ForkJoinPool(parallelism);
+        try {
+            ArrayDeque<Future<DirectoryAnalysis>> pending = new ArrayDeque<>();
+            int nextFile = 0;
+            while (nextFile < files.size() && pending.size() < parallelism) {
+                Path file = files.get(nextFile++);
+                pending.add(pool.submit(
+                    () -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog)));
+            }
+            while (!pending.isEmpty()) {
+                consumer.accept(pending.remove().get());
+                if (nextFile < files.size()) {
+                    Path file = files.get(nextFile++);
+                    pending.add(pool.submit(
+                        () -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog)));
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Parallel directory analysis interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IOException("Parallel directory analysis failed", e.getCause());
+        } finally {
+            pool.shutdown();
         }
     }
 
@@ -644,6 +687,16 @@ public class Analyze implements Callable<Integer> {
         return "full".equalsIgnoreCase(details);
     }
 
+    private int directoryParallelism(int fileCount) {
+        if (fileCount <= 1) {
+            return fileCount;
+        }
+        int processors = this.directoryParallelismOverride == null
+            ? Runtime.getRuntime().availableProcessors()
+            : this.directoryParallelismOverride;
+        return Math.min(fileCount, Math.max(1, processors));
+    }
+
     private static boolean stdinHasData() {
         InputStream in = System.in;
         if (in == null) {
@@ -761,6 +814,10 @@ public class Analyze implements Callable<Integer> {
 
     void setServerOptions(TrinoConnectionOptions serverOptions) {
         this.serverOptions = serverOptions;
+    }
+
+    void setDirectoryParallelismOverride(int directoryParallelismOverride) {
+        this.directoryParallelismOverride = directoryParallelismOverride;
     }
 
     void setDirPath(String dirPath) {
@@ -894,5 +951,10 @@ public class Analyze implements Callable<Integer> {
                 false, false);
         }
 
+    }
+
+    @FunctionalInterface
+    private interface DirectoryAnalysisConsumer {
+        void accept(DirectoryAnalysis analysis) throws IOException;
     }
 }

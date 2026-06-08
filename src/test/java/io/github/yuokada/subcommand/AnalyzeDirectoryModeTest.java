@@ -96,4 +96,37 @@ class AnalyzeDirectoryModeTest {
         assertTrue(out.contains("\"parseError\""));
         assertTrue(out.contains("\"invalid.sql\""));
     }
+
+    @Test
+    void parallelDirectoryOutputMatchesSequential(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("a_clean.sql"), "SELECT id FROM foo;");
+        Files.writeString(tempDir.resolve("b_warn.sql"), "SELECT * FROM foo ORDER BY 1;");
+        Files.writeString(tempDir.resolve("c_error.sql"), "DELETE FROM foo;");
+
+        RunResult sequential = runDirectory(tempDir, 1);
+        RunResult parallel = runDirectory(tempDir, 2);
+
+        assertEquals(sequential.exitCode(), parallel.exitCode());
+        assertEquals(sequential.stdout(), parallel.stdout());
+        assertEquals(sequential.stderr(), parallel.stderr());
+    }
+
+    private RunResult runDirectory(Path dir, int parallelism) throws IOException {
+        outContent.reset();
+        errContent.reset();
+        Analyze analyze = new Analyze();
+        analyze.setDirPath(dir.toString());
+        analyze.setSummary(true);
+        analyze.setDirectoryParallelismOverride(parallelism);
+
+        int exit = analyze.call();
+
+        return new RunResult(
+            exit,
+            outContent.toString(StandardCharsets.UTF_8),
+            errContent.toString(StandardCharsets.UTF_8));
+    }
+
+    private record RunResult(int exitCode, String stdout, String stderr) {
+    }
 }

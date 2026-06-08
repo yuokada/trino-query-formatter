@@ -21,11 +21,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
@@ -132,6 +137,11 @@ public class Format implements Callable<Integer> {
     @CommandLine.Option(names = {"--max-line-length"}, defaultValue = "0",
         description = "Warn when formatted lines exceed this length. 0 = unlimited.")
     private int maxLineLength;
+
+    /**
+     * Optional directory parallelism override for tests.
+     */
+    private Integer directoryParallelismOverride;
 
     @Override
     public Integer call() throws IOException {
@@ -264,48 +274,38 @@ public class Format implements Callable<Integer> {
 
         Path baseDir = Path.of(this.dirPath).toAbsolutePath().normalize();
         List<Path> files = SqlFileCollector.collect(this.dirPath, this.excludePatterns);
-        int clean = 0;
-        int warning = 0;
-        int error = 0;
-
-        for (Path file : files) {
-            String relative = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
-            try {
-                int code;
-                if (this.diff) {
-                    System.out.println("===== " + relative + " =====");
-                    code = runDiffMode(file.toString(), kc);
-                } else {
-                    code = runCheckMode(file.toString(), kc);
-                }
-                if (code == ExitCodes.ERROR) {
-                    error++;
-                } else if (code == ExitCodes.WARNING) {
-                    warning++;
-                } else {
-                    clean++;
-                }
-            } catch (Exception e) {
-                System.err.println("Error: failed to process " + relative + ": " + e.getMessage());
-                error++;
+        int[] counts = new int[3];
+        processDirectoryFiles(baseDir, files, kc, result -> {
+            if (!result.stdout().isEmpty()) {
+                System.out.print(result.stdout());
             }
-        }
+            if (!result.stderr().isEmpty()) {
+                System.err.print(result.stderr());
+            }
+            if (result.exitCode() == ExitCodes.ERROR) {
+                counts[2]++;
+            } else if (result.exitCode() == ExitCodes.WARNING) {
+                counts[1]++;
+            } else {
+                counts[0]++;
+            }
+        });
 
         int exitCode;
-        if (error > 0) {
+        if (counts[2] > 0) {
             exitCode = ExitCodes.ERROR;
-        } else if (warning > 0) {
+        } else if (counts[1] > 0) {
             exitCode = ExitCodes.WARNING;
         } else {
             exitCode = ExitCodes.OK;
         }
 
         if (this.summary) {
-            int total = clean + warning + error;
+            int total = counts[0] + counts[1] + counts[2];
             System.out.println("Files analyzed : " + total);
-            System.out.println("  Clean        : " + clean);
-            System.out.println("  Warnings     : " + warning);
-            System.out.println("  Errors       : " + error);
+            System.out.println("  Clean        : " + counts[0]);
+            System.out.println("  Warnings     : " + counts[1]);
+            System.out.println("  Errors       : " + counts[2]);
             System.out.println("Exit code: " + exitCode);
         }
         return exitCode;
@@ -322,19 +322,13 @@ public class Format implements Callable<Integer> {
      * @throws IOException if the file cannot be read
      */
     private Integer runCheckMode(String path, KeywordCase kc) throws IOException {
-        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
-        StringBuilder formatted = new StringBuilder();
-        SqlInput.forEachStatementFromFile(path, stmt -> {
-            formatted.append(formatStatement(stmt, kc)).append(";\n");
-        });
-        String formattedStr = normalizeNewlines(formatted.toString()).stripTrailing();
-        if (!formattedStr.equals(original)) {
+        int exitCode = checkFormatted(path, kc);
+        if (exitCode == ExitCodes.WARNING) {
             if (!isQuiet()) {
                 System.err.println("Would reformat: " + path);
             }
-            return ExitCodes.WARNING;
         }
-        return ExitCodes.OK;
+        return exitCode;
     }
 
     /**
@@ -350,25 +344,104 @@ public class Format implements Callable<Integer> {
      * @throws IOException if the file cannot be read
      */
     private Integer runDiffMode(String path, KeywordCase kc) throws IOException {
-        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
-        StringBuilder formatted = new StringBuilder();
-        SqlInput.forEachStatementFromFile(path, stmt -> {
-            formatted.append(formatStatement(stmt, kc)).append(";\n");
-        });
-        String formattedStr = normalizeNewlines(formatted.toString()).stripTrailing();
-        if (formattedStr.equals(original)) {
+        String diffOutput = diffFormatted(path, kc);
+        if (diffOutput == null) {
             return ExitCodes.OK;
         }
+        System.out.print(diffOutput);
+        return ExitCodes.WARNING;
+    }
+
+    private void processDirectoryFiles(Path baseDir, List<Path> files, KeywordCase kc,
+        Consumer<DirectoryFormatResult> consumer) throws IOException {
+        int parallelism = directoryParallelism(files.size());
+        if (parallelism <= 1) {
+            for (Path file : files) {
+                consumer.accept(formatDirectoryFile(baseDir, file, kc));
+            }
+            return;
+        }
+
+        ForkJoinPool pool = new ForkJoinPool(parallelism);
+        try {
+            ArrayDeque<Future<DirectoryFormatResult>> pending = new ArrayDeque<>();
+            int nextFile = 0;
+            while (nextFile < files.size() && pending.size() < parallelism) {
+                Path file = files.get(nextFile++);
+                pending.add(pool.submit(() -> formatDirectoryFile(baseDir, file, kc)));
+            }
+            while (!pending.isEmpty()) {
+                consumer.accept(pending.remove().get());
+                if (nextFile < files.size()) {
+                    Path file = files.get(nextFile++);
+                    pending.add(pool.submit(() -> formatDirectoryFile(baseDir, file, kc)));
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Parallel directory formatting interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IOException("Parallel directory formatting failed", e.getCause());
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    private DirectoryFormatResult formatDirectoryFile(Path baseDir, Path file, KeywordCase kc) {
+        String relative = baseDir.relativize(file.toAbsolutePath().normalize()).toString();
+        try {
+            if (this.diff) {
+                String diffOutput = diffFormatted(file.toString(), kc);
+                String output = "===== " + relative + " =====" + System.lineSeparator()
+                    + (diffOutput == null ? "" : diffOutput);
+                int exitCode = diffOutput == null ? ExitCodes.OK : ExitCodes.WARNING;
+                return new DirectoryFormatResult(exitCode, output, "");
+            }
+            int exitCode = checkFormatted(file.toString(), kc);
+            String err = exitCode == ExitCodes.WARNING && !isQuiet()
+                ? "Would reformat: " + relative + System.lineSeparator()
+                : "";
+            return new DirectoryFormatResult(exitCode, "", err);
+        } catch (Exception e) {
+            String message = e.getMessage() != null ? e.getMessage()
+                : e.getClass().getSimpleName();
+            return new DirectoryFormatResult(ExitCodes.ERROR, "",
+                "Error: failed to process " + relative + ": " + message
+                    + System.lineSeparator());
+        }
+    }
+
+    private int checkFormatted(String path, KeywordCase kc) throws IOException {
+        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
+        String formattedStr = formattedFile(path, kc);
+        if (!formattedStr.equals(original)) {
+            return ExitCodes.WARNING;
+        }
+        return ExitCodes.OK;
+    }
+
+    private String diffFormatted(String path, KeywordCase kc) throws IOException {
+        String original = normalizeNewlines(SqlInput.readFileUtf8(path)).stripTrailing();
+        String formattedStr = formattedFile(path, kc);
+        if (formattedStr.equals(original)) {
+            return null;
+        }
         boolean colorize = System.console() != null;
-        String diff = UnifiedDiff.compute(
+        return UnifiedDiff.compute(
             Arrays.asList(original.split("\n", -1)),
             Arrays.asList(formattedStr.split("\n", -1)),
             path,
             path,
             3,
             colorize);
-        System.out.print(diff);
-        return ExitCodes.WARNING;
+    }
+
+    private String formattedFile(String path, KeywordCase kc) throws IOException {
+        StringBuilder formatted = new StringBuilder();
+        SqlInput.forEachStatementFromFile(path, stmt -> {
+            formatted.append(formatStatement(stmt, kc)).append(";\n");
+        });
+        return normalizeNewlines(formatted.toString()).stripTrailing();
     }
 
     /**
@@ -484,6 +557,16 @@ public class Format implements Callable<Integer> {
         return this.entryCommand != null && this.entryCommand.isQuiet();
     }
 
+    private int directoryParallelism(int fileCount) {
+        if (fileCount <= 1) {
+            return fileCount;
+        }
+        int processors = this.directoryParallelismOverride == null
+            ? Runtime.getRuntime().availableProcessors()
+            : this.directoryParallelismOverride;
+        return Math.min(fileCount, Math.max(1, processors));
+    }
+
     private static boolean stdinHasData() {
         InputStream in = System.in;
         if (in == null) {
@@ -577,5 +660,12 @@ public class Format implements Callable<Integer> {
 
     void setSummary(boolean value) {
         this.summary = value;
+    }
+
+    void setDirectoryParallelismOverride(int value) {
+        this.directoryParallelismOverride = value;
+    }
+
+    private record DirectoryFormatResult(int exitCode, String stdout, String stderr) {
     }
 }

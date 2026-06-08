@@ -94,4 +94,67 @@ class FormatDirectoryModeTest {
         assertTrue(errContent.toString(StandardCharsets.UTF_8)
             .contains("--dir mode requires --check or --diff"));
     }
+
+    @Test
+    void parallelDirectoryCheckOutputMatchesSequential(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("a_clean.sql"), "SELECT *\nFROM\n  foo\n;");
+        Files.writeString(tempDir.resolve("b_warn.sql"), "select * from foo;");
+        Files.writeString(tempDir.resolve("c_error.sql"), "SELEC * FROM foo;");
+
+        RunResult sequential = runDirectoryCheck(tempDir, 1);
+        RunResult parallel = runDirectoryCheck(tempDir, 2);
+
+        assertEquals(sequential.exitCode(), parallel.exitCode());
+        assertEquals(sequential.stdout(), parallel.stdout());
+        assertEquals(sequential.stderr(), parallel.stderr());
+    }
+
+    @Test
+    void parallelDirectoryDiffOutputMatchesSequential(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("a_clean.sql"), "SELECT *\nFROM\n  foo\n;");
+        Files.writeString(tempDir.resolve("b_warn.sql"), "select * from foo;");
+
+        RunResult sequential = runDirectoryDiff(tempDir, 1);
+        RunResult parallel = runDirectoryDiff(tempDir, 2);
+
+        assertEquals(sequential.exitCode(), parallel.exitCode());
+        assertEquals(sequential.stdout(), parallel.stdout());
+        assertEquals(sequential.stderr(), parallel.stderr());
+    }
+
+    private RunResult runDirectoryCheck(Path dir, int parallelism) throws IOException {
+        outContent.reset();
+        errContent.reset();
+        Format format = new Format();
+        format.setDirPath(dir.toString());
+        format.setCheck(true);
+        format.setSummary(true);
+        format.setDirectoryParallelismOverride(parallelism);
+
+        int exit = format.call();
+
+        return new RunResult(
+            exit,
+            outContent.toString(StandardCharsets.UTF_8),
+            errContent.toString(StandardCharsets.UTF_8));
+    }
+
+    private RunResult runDirectoryDiff(Path dir, int parallelism) throws IOException {
+        outContent.reset();
+        errContent.reset();
+        Format format = new Format();
+        format.setDirPath(dir.toString());
+        format.setDiff(true);
+        format.setDirectoryParallelismOverride(parallelism);
+
+        int exit = format.call();
+
+        return new RunResult(
+            exit,
+            outContent.toString(StandardCharsets.UTF_8),
+            errContent.toString(StandardCharsets.UTF_8));
+    }
+
+    private record RunResult(int exitCode, String stdout, String stderr) {
+    }
 }
