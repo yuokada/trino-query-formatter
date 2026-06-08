@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.yuokada.api.AnalyzerApi;
 import io.trino.sql.parser.SqlParser;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,18 @@ class MemoryRegressionTest {
     }
 
     private static long usedMemoryBytes(Runtime runtime) {
-        runtime.gc();
+        Object marker = new Object();
+        WeakReference<Object> markerReference = new WeakReference<>(marker);
+        marker = null;
+        for (int attempt = 0; attempt < 10 && markerReference.get() != null; attempt++) {
+            runtime.gc();
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
         long total = runtime.totalMemory();
         long free = runtime.freeMemory();
         return total - free;
