@@ -21,13 +21,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
@@ -271,11 +274,8 @@ public class Format implements Callable<Integer> {
 
         Path baseDir = Path.of(this.dirPath).toAbsolutePath().normalize();
         List<Path> files = SqlFileCollector.collect(this.dirPath, this.excludePatterns);
-        int clean = 0;
-        int warning = 0;
-        int error = 0;
-
-        for (DirectoryFormatResult result : formatDirectoryFiles(baseDir, files, kc)) {
+        int[] counts = new int[3];
+        processDirectoryFiles(baseDir, files, kc, result -> {
             if (!result.stdout().isEmpty()) {
                 System.out.print(result.stdout());
             }
@@ -283,29 +283,29 @@ public class Format implements Callable<Integer> {
                 System.err.print(result.stderr());
             }
             if (result.exitCode() == ExitCodes.ERROR) {
-                error++;
+                counts[2]++;
             } else if (result.exitCode() == ExitCodes.WARNING) {
-                warning++;
+                counts[1]++;
             } else {
-                clean++;
+                counts[0]++;
             }
-        }
+        });
 
         int exitCode;
-        if (error > 0) {
+        if (counts[2] > 0) {
             exitCode = ExitCodes.ERROR;
-        } else if (warning > 0) {
+        } else if (counts[1] > 0) {
             exitCode = ExitCodes.WARNING;
         } else {
             exitCode = ExitCodes.OK;
         }
 
         if (this.summary) {
-            int total = clean + warning + error;
+            int total = counts[0] + counts[1] + counts[2];
             System.out.println("Files analyzed : " + total);
-            System.out.println("  Clean        : " + clean);
-            System.out.println("  Warnings     : " + warning);
-            System.out.println("  Errors       : " + error);
+            System.out.println("  Clean        : " + counts[0]);
+            System.out.println("  Warnings     : " + counts[1]);
+            System.out.println("  Errors       : " + counts[2]);
             System.out.println("Exit code: " + exitCode);
         }
         return exitCode;
@@ -352,20 +352,31 @@ public class Format implements Callable<Integer> {
         return ExitCodes.WARNING;
     }
 
-    private List<DirectoryFormatResult> formatDirectoryFiles(Path baseDir, List<Path> files,
-        KeywordCase kc) throws IOException {
+    private void processDirectoryFiles(Path baseDir, List<Path> files, KeywordCase kc,
+        Consumer<DirectoryFormatResult> consumer) throws IOException {
         int parallelism = directoryParallelism(files.size());
         if (parallelism <= 1) {
-            return files.stream()
-                .map(file -> formatDirectoryFile(baseDir, file, kc))
-                .toList();
+            for (Path file : files) {
+                consumer.accept(formatDirectoryFile(baseDir, file, kc));
+            }
+            return;
         }
 
         ForkJoinPool pool = new ForkJoinPool(parallelism);
         try {
-            return pool.submit(() -> files.parallelStream()
-                .map(file -> formatDirectoryFile(baseDir, file, kc))
-                .toList()).get();
+            ArrayDeque<Future<DirectoryFormatResult>> pending = new ArrayDeque<>();
+            int nextFile = 0;
+            while (nextFile < files.size() && pending.size() < parallelism) {
+                Path file = files.get(nextFile++);
+                pending.add(pool.submit(() -> formatDirectoryFile(baseDir, file, kc)));
+            }
+            while (!pending.isEmpty()) {
+                consumer.accept(pending.remove().get());
+                if (nextFile < files.size()) {
+                    Path file = files.get(nextFile++);
+                    pending.add(pool.submit(() -> formatDirectoryFile(baseDir, file, kc)));
+                }
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Parallel directory formatting interrupted", e);
@@ -388,12 +399,14 @@ public class Format implements Callable<Integer> {
             }
             int exitCode = checkFormatted(file.toString(), kc);
             String err = exitCode == ExitCodes.WARNING && !isQuiet()
-                ? "Would reformat: " + file + System.lineSeparator()
+                ? "Would reformat: " + relative + System.lineSeparator()
                 : "";
             return new DirectoryFormatResult(exitCode, "", err);
         } catch (Exception e) {
+            String message = e.getMessage() != null ? e.getMessage()
+                : e.getClass().getSimpleName();
             return new DirectoryFormatResult(ExitCodes.ERROR, "",
-                "Error: failed to process " + relative + ": " + e.getMessage()
+                "Error: failed to process " + relative + ": " + message
                     + System.lineSeparator());
         }
     }

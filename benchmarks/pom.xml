@@ -12,14 +12,13 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jmh.version>1.37</jmh.version>
         <trino.version>435</trino.version>
-        <formatter.version>1.0.0-SNAPSHOT</formatter.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>io.github.yuokada</groupId>
             <artifactId>trino-query-formatter</artifactId>
-            <version>${formatter.version}</version>
+            <version>${project.version}</version>
             <classifier>core</classifier>
         </dependency>
         <dependency>

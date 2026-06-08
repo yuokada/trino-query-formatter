@@ -14,6 +14,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -36,7 +37,7 @@ public class PerformanceBenchmarks {
     private String representativeSelect;
 
     /**
-     * Prepares reusable SQL corpora for each benchmark invocation.
+     * Prepares reusable SQL corpora for each benchmark trial.
      */
     @Setup
     public void setUp() {
@@ -60,6 +61,7 @@ public class PerformanceBenchmarks {
      * @param blackhole consumes parsed statements
      */
     @Benchmark
+    @OperationsPerInvocation(1000)
     public void parseLargeFile(Blackhole blackhole) {
         for (String sql : this.largeStatementCorpus) {
             Statement statement = this.parser.createStatement(sql);
@@ -83,6 +85,7 @@ public class PerformanceBenchmarks {
      * @param blackhole consumes analysis results
      */
     @Benchmark
+    @OperationsPerInvocation(1000)
     public void analyzeFull(Blackhole blackhole) {
         for (String sql : this.largeStatementCorpus) {
             blackhole.consume(AnalyzerApi.analyzeStatement(sql, null, null, null, null));
