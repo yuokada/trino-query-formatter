@@ -91,9 +91,10 @@ jobs:
     - name: Create or update PR comment
       run: |
         comment_id="$(
-          gh api --paginate --slurp \
+          gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
-            --jq '[.[][] | select((.body // "") | contains("<!-- scc-full-report -->"))][0].id // empty'
+            --jq '.[] | select((.body // "") | contains("<!-- scc-full-report -->")) | .id' \
+            | head -n 1
         )"
 
         if [ -n "$comment_id" ]; then
