@@ -27,7 +27,7 @@ jobs:
     env:
       SCC_VERSION: 3.7.0
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
@@ -70,7 +70,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       GH_TOKEN: ${{ github.token }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         ref: ${{ github.event.pull_request.merge_commit_sha }}
 
