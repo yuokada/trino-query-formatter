@@ -19,14 +19,14 @@ import io.github.yuokada.subcommand.output.AnalysisPrinter;
 import io.github.yuokada.subcommand.output.JsonAnalysisPrinter;
 import io.github.yuokada.subcommand.output.OutputEmitter;
 import io.github.yuokada.subcommand.output.TextAnalysisPrinter;
+import io.github.yuokada.subcommand.util.DirectoryProcessor;
 import io.github.yuokada.subcommand.util.SqlFileCollector;
 import io.github.yuokada.subcommand.util.SqlInput;
+import io.github.yuokada.subcommand.util.StdinDetector;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -34,10 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 import picocli.CommandLine;
 import picocli.CommandLine.ExitCode;
 import picocli.CommandLine.Parameters;
@@ -454,39 +450,12 @@ public class Analyze implements Callable<Integer> {
     private void processDirectoryFiles(Path baseDir, List<Path> files, Set<String> effectiveKnown,
         Map<String, UdfDefinition> udfCatalog, DirectoryAnalysisConsumer consumer)
         throws IOException {
-        int parallelism = directoryParallelism(files.size());
-        if (parallelism <= 1) {
-            for (Path file : files) {
-                consumer.accept(analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog));
-            }
-            return;
-        }
-
-        ForkJoinPool pool = new ForkJoinPool(parallelism);
-        try {
-            ArrayDeque<Future<DirectoryAnalysis>> pending = new ArrayDeque<>();
-            int nextFile = 0;
-            while (nextFile < files.size() && pending.size() < parallelism) {
-                Path file = files.get(nextFile++);
-                pending.add(pool.submit(
-                    () -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog)));
-            }
-            while (!pending.isEmpty()) {
-                consumer.accept(pending.remove().get());
-                if (nextFile < files.size()) {
-                    Path file = files.get(nextFile++);
-                    pending.add(pool.submit(
-                        () -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog)));
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Parallel directory analysis interrupted", e);
-        } catch (ExecutionException e) {
-            throw new IOException("Parallel directory analysis failed", e.getCause());
-        } finally {
-            pool.shutdown();
-        }
+        DirectoryProcessor.processOrdered(
+            files,
+            DirectoryProcessor.parallelism(files.size(), this.directoryParallelismOverride),
+            file -> analyzeDirectoryFile(baseDir, file, effectiveKnown, udfCatalog),
+            consumer::accept,
+            "Parallel directory analysis");
     }
 
     private String limitAst(String ast) {
@@ -687,40 +656,8 @@ public class Analyze implements Callable<Integer> {
         return "full".equalsIgnoreCase(details);
     }
 
-    private int directoryParallelism(int fileCount) {
-        if (fileCount <= 1) {
-            return fileCount;
-        }
-        int processors = this.directoryParallelismOverride == null
-            ? Runtime.getRuntime().availableProcessors()
-            : this.directoryParallelismOverride;
-        return Math.min(fileCount, Math.max(1, processors));
-    }
-
     private static boolean stdinHasData() {
-        InputStream in = System.in;
-        if (in == null) {
-            return false;
-        }
-        // available() can block in some environments (e.g. Maven Surefire where System.in
-        // is socket-backed). Run the check in a daemon thread with a short timeout to
-        // keep this non-blocking in all contexts.
-        AtomicBoolean hasData = new AtomicBoolean(false);
-        Thread checker = new Thread(() -> {
-            try {
-                hasData.set(in.available() > 0);
-            } catch (IOException ignored) {
-                // leave as false
-            }
-        }, "stdin-checker");
-        checker.setDaemon(true);
-        checker.start();
-        try {
-            checker.join(50L);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return hasData.get();
+        return StdinDetector.hasData();
     }
 
     private void applyConfigDefaults() throws ConfigException {
